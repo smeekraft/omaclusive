@@ -342,6 +342,11 @@
   const EINRICHTUNG_STAND = 2;
   const MODI = ["b", "a", "c"]; // Reihenfolge in der Abfrage: einfach zuerst (Standard)
 
+  // Allererster Schritt: Sprache (Deutsch | English). Danach nie wieder von allein; später unter Einstellungen.
+  function einrichtungStart(e) {
+    return e && e.sprache === true ? "bedienung" : "sprache";
+  }
+
   function einrichtungNoetig(e) {
     return !(e && e.fertig === true && Number(e.stand) >= EINRICHTUNG_STAND);
   }
@@ -352,8 +357,9 @@
   }
 
   // Jede Frage hat höchstens zwei Kacheln (die Wahl und "Andere").
-  // Schritte: bedienung (Stimme | Knöpfe, Maus, Tasten) -> knopf (Zwei | Ein) -> modus (b | a | c) -> autostart (Nein | Ja).
+  // Schritte: sprache (Deutsch | English) -> bedienung (Stimme | Knöpfe, Maus, Tasten) -> knopf (Zwei | Ein) -> modus (b | a | c) -> autostart (Nein | Ja).
   function einrichtungWahl(schritt, wert) {
+    if (schritt === "sprache") return { fertig: false, schritt: "bedienung", sprache: wert === "en" ? "en" : "de" };
     if (schritt === "bedienung" && wert === "stimme") return { fertig: false, schritt: "modus", bedienung: "stimme", knopf: "zwei", hoeren: true };
     if (schritt === "bedienung") return { fertig: false, schritt: "knopf", bedienung: "knoepfe", hoeren: false };
     if (schritt === "knopf") return { fertig: false, schritt: "modus", knopf: wert === "ein" ? "ein" : "zwei" };
@@ -417,6 +423,7 @@
     einrichtungWahl: einrichtungWahl,
     einrichtungStandard: einrichtungStandard,
     einrichtungNoetig: einrichtungNoetig,
+    einrichtungStart: einrichtungStart,
     EINRICHTUNG_STAND: EINRICHTUNG_STAND,
     MODI: MODI,
     passend: passend,

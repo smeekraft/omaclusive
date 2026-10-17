@@ -332,5 +332,10 @@
   "Donnerstag": "Donnerstag",
   "Freitag": "Freitag",
   "Samstag": "Samstag",
-  "Sonntag": "Sonntag"
+  "Sonntag": "Sonntag",
+  "Einen Moment …": "Einen Moment …",
+  "Die Stimme wird geladen, {} MB. Einen Moment …": "Die Stimme wird geladen, {} MB. Einen Moment …",
+  "Die Stimme konnte nicht geladen werden. Ist das Internet an?": "Die Stimme konnte nicht geladen werden. Ist das Internet an?",
+  "Sprache und Stimme": "Sprache und Stimme",
+  "Tippe auf eine Sprache. Die Texte und die Stimme wechseln. Beim ersten Mal wird die Stimme geladen.": "Tippe auf eine Sprache. Die Texte und die Stimme wechseln. Beim ersten Mal wird die Stimme geladen."
 }

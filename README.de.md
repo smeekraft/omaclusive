@@ -37,12 +37,15 @@ Im Notfall **112** anrufen oder anrufen lassen. Verlass dich dafür nicht auf Om
 ```bash
 git clone https://github.com/smeekraft/omaclusive.git
 cd omaclusive
-./install.sh            # Englisch: ./install.sh --lang en
-cp config.example.json config.json   # Englisch: config.example.en.json
-./start-talker.sh
+./install.sh
 ```
 
-`install.sh` läuft ohne Root, legt eine eigene Kopie unter `~/.local/share/omaclusive` an und lädt Piper inkl. Stimme mit Prüfsumme. Voraussetzungen: Omarchy oder Arch-ähnlich, optional `mpv` für Filme.
+Danach im App-Menü nach **Omaclusive** suchen. Es startet nicht von selbst. Beim ersten Start kommen ein paar große Fragen.
+
+`install.sh` läuft ohne Root, legt eine eigene Kopie unter `~/.local/share/omaclusive` an und lädt Piper inkl. Stimme mit Prüfsumme.
+Sprache: ohne Angabe nach der Systemsprache (`$LANG`: Deutsch oder Englisch, sonst Englisch). Erzwingen mit `./install.sh --lang de` oder `--lang en`.
+Später in der App ändern: die kleine Taste **⚙ Einrichten** 3 Sekunden halten, dann **🌐 Sprache**. Die Stimme wird beim ersten Mal geladen (etwa 65 MB, mit Prüfsumme).
+Voraussetzungen: Omarchy oder Arch-ähnlich, `chromium`, `python3`, `curl`, optional `mpv` für Filme.
 
 ## Für Angehörige und Betreuende
 
@@ -74,7 +77,8 @@ Ansagen, die Einrichtung, die Beispiel-Karten und die Stimme.
 
 - In `config.json` steht `"language": "de"` oder `"language": "en"`. Fehlt der Eintrag, gilt Deutsch.
   Eine andere Sprache fällt auf Englisch zurück. Fehlt ein einzelner Text, bleibt das deutsche Original stehen.
-- Neue Kopie auf Englisch: `./install.sh --lang en`. Das lädt die englische Stimme (LJ Speech, gemeinfrei) und nimmt `config.example.en.json`.
+- In der App: **Einrichten, Sprache und Stimme**. Große Kacheln: Deutsch, English (US, männlich, Standard), English (US, weiblich), English (US, weiblich, beste Qualität), English (UK, weiblich). Beim allerersten Start ist die Sprache die erste Frage (Deutsch | English, die Systemsprache ist vorgewählt). Die Stimme wird beim ersten Mal geladen. Neue Sprachen: `locales/xx.json` und ein Eintrag in `voices.json` (Name, Modell, SHA256).
+- Neue Kopie auf Englisch: `./install.sh --lang en`. Das lädt die englische Stimme (John, männlich, gemeinfrei) und nimmt `config.example.en.json`.
 - Bestehende Kopie umstellen: `python3 sprache_wechseln.py en` (zurück: `de`). Das übersetzt nur die mitgelieferten Texte
   in `config.json`, eigene Namen und Sätze bleiben. Eine Sicherung `config.json.bak` entsteht. Danach den Server neu starten.
 - Texte stehen in `locales/de.json` und `locales/en.json`. Der Schlüssel ist der deutsche Originaltext.
@@ -207,8 +211,6 @@ Im Betreuer-Bereich: **Pfad bearbeiten (Drag and Drop)** (`editor.html`). Nur au
 
 ## Bildschirm
 
-## Bildschirm
-
 Es gibt immer genau zwei große Kacheln, sonst nichts (keine Ecken-Leiste, kein Hilfe-Knopf). Oben steht nur der Name der Ebene und klein die Einstellungstaste.
 Hat eine Ebene drei oder mehr Karten, steht rechts **Andere** und blättert weiter. Hat sie genau zwei, stehen beide da.
 In Unterebenen kommt **Zurück** als normale Kachel in diese Reihe. Auf dem Start ist **Ich will was sagen** die erste, große Kachel.
@@ -260,7 +262,7 @@ Eine Belegung gilt überall, in der Einrichtung und in der App:
 - `debounceMs` ist die Sperrzeit gegen doppelte Drücke (Standard `300`).
 - `keys` in `config.json` ändert die Tasten: `links`, `rechts`, `waehlen`.
 
-Ansage ist Piper, offline: Deutsch mit der Stimme Thorsten, Englisch mit LJ Speech. Espeak-ng ist der Ersatz.
+Ansage ist Piper, offline: Deutsch mit der Stimme Thorsten, Englisch mit der männlichen Stimme John. Espeak-ng ist der Ersatz.
 Die kleine Taste **⚙ Einrichten** oben rechts öffnet die Betreuung, wenn man sie 3 Sekunden hält (**Strg+Umschalt+E** geht auch).
 `start-talker.sh` beendet vor dem Start alte Omaclusive-Server und -Fenster auf dem Port und bringt das Fenster in den Fokus.
 
@@ -304,6 +306,7 @@ python3 test_sprache.py
 python3 test_hilferuf.py
 python3 test_praxis.py
 python3 test_i18n.py
+python3 test_stimmen.py                           # Sprach- und Stimmwahl
 python3 test_bildstil.py
 python3 test_tempo.py
 python3 test_ansage.py

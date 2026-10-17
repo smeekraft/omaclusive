@@ -80,8 +80,8 @@
                 }
               },
               {
-                "wort": "Films",
-                "sprechen": "Films",
+                "wort": "Movies",
+                "sprechen": "Movies",
                 "bild": "img/fernsehen.svg",
                 "aktion": {
                   "typ": "ordner",
@@ -101,7 +101,7 @@
       },
       "beschreibung": {
         "de": "Für Seniorinnen, Senioren und Menschen, die mit Technik wenig vertraut sind: wenige Bereiche (Sagen, Bilder, Filme, Steuern), höchstens zwei Ebenen, vertraute Wörter.",
-        "en": "For seniors and people unfamiliar with technology: a few areas (Say, Pictures, Films, Controls), at most two levels, familiar words."
+        "en": "For seniors and people unfamiliar with technology: a few areas (Say, Pictures, Movies, Controls), at most two levels, familiar words."
       },
       "maxEbenen": 2,
       "plugins": false,
@@ -287,8 +287,8 @@
                 }
               },
               {
-                "wort": "Films",
-                "sprechen": "Films",
+                "wort": "Movies",
+                "sprechen": "Movies",
                 "bild": "img/fernsehen.svg",
                 "aktion": {
                   "typ": "ordner",
@@ -421,7 +421,7 @@
     "c": {
       "name": {
         "de": "Mehr Auswahl",
-        "en": "More choice"
+        "en": "More choices"
       },
       "beschreibung": {
         "de": "Für Menschen mit leichter geistiger und/oder psychischer Beeinträchtigung: mehr Auswahl, bis zu drei Ebenen, zusätzliche Pakete wie Grundbedürfnisse, mehr Zeit.",
@@ -645,8 +645,8 @@
                 }
               },
               {
-                "wort": "Films",
-                "sprechen": "Films",
+                "wort": "Movies",
+                "sprechen": "Movies",
                 "bild": "img/fernsehen.svg",
                 "aktion": {
                   "typ": "ordner",

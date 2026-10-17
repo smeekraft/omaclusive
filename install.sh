@@ -1,42 +1,49 @@
 #!/bin/bash
 # Omaclusive installieren, ohne Root. Lädt Piper und die Stimme und prüft die Summe.
 # Install Omaclusive without root. Downloads Piper and the voice and checks the checksum.
-# Sprache / language:  ./install.sh --lang en   (oder / or  OMACLUSIVE_LANG=en ./install.sh). Standard / default: de
+# Sprache / language:  ./install.sh --lang en   (oder / or  OMACLUSIVE_LANG=en ./install.sh). Ohne Angabe nach $LANG, sonst de.
+# In der App ändern: Einrichten > Sprache und Stimme.
 # Fasst den bisher installierten Talker nicht an und ändert keine Tasten.
 set -euo pipefail
 SRC="$(cd "$(dirname "$0")" && pwd)"
-LANGUAGE="${OMACLUSIVE_LANG:-de}"
+LANGUAGE="${OMACLUSIVE_LANG:-}"
+SPRACHE_GEWAEHLT="${OMACLUSIVE_LANG:+ja}"
 while [ $# -gt 0 ]; do
   case "$1" in
-    --lang) LANGUAGE="${2:-de}"; shift 2 ;;
-    --lang=*) LANGUAGE="${1#--lang=}"; shift ;;
+    --lang) LANGUAGE="${2:-de}"; SPRACHE_GEWAEHLT=ja; shift 2 ;;
+    --lang=*) LANGUAGE="${1#--lang=}"; SPRACHE_GEWAEHLT=ja; shift ;;
     *) echo "Unbekannte Option / unknown option: $1"; exit 1 ;;
   esac
 done
-case "$LANGUAGE" in
-  de|en) ;;
-  *) echo "Sprache '$LANGUAGE' gibt es nicht, nehme Englisch / language not available, using English"; LANGUAGE=en ;;
-esac
+if [ -z "$LANGUAGE" ]; then
+  case "${LANG:-}" in
+    de*) LANGUAGE=de ;;
+    "") LANGUAGE=de ;;
+    *) LANGUAGE=en ;;
+  esac
+fi
+if [ ! -f "$SRC/locales/${LANGUAGE}.json" ] && [ "$LANGUAGE" != "de" ]; then
+  echo "Sprache '$LANGUAGE' gibt es nicht, nehme Englisch / language not available, using English"
+  LANGUAGE=en
+fi
 DEST="${HOME}/.local/share/omaclusive"
 APPS="${HOME}/.local/share/applications"
 PIPER_URL="https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_x86_64.tar.gz"
 PIPER_SHA="a50cb45f355b7af1f6d758c1b360717877ba0a398cc8cbe6d2a7a3a26e225992"
-if [ "$LANGUAGE" = "en" ]; then
-  # English: LJ Speech voice (public domain)
-  VOICE_NAME="en_US-ljspeech-medium"
-  VOICE_URL="https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx"
-  VOICE_SHA="6f52a751e2349abe7a76735eb09dc1875298c77ea2342ffd2fef79ff81b87f22"
-  VOICE_JSON_URL="https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx.json"
-  VOICE_JSON_SHA="141d612cc0a95ed7efc1ca936b845c2364967f2e9217c5dbfcf69fc4d6c65860"
-  CONFIG_QUELLE="config.example.en.json"
-else
-  VOICE_NAME="de_DE-thorsten-medium"
-  VOICE_URL="https://huggingface.co/rhasspy/piper-voices/resolve/main/de/de_DE/thorsten/medium/${VOICE_NAME}.onnx"
-  VOICE_SHA="7e64762d8e5118bb578f2eea6207e1a35a8e0c30595010b666f983fc87bb7819"
-  VOICE_JSON_URL="https://huggingface.co/rhasspy/piper-voices/resolve/main/de/de_DE/thorsten/medium/${VOICE_NAME}.onnx.json"
-  VOICE_JSON_SHA="974adee790533adb273a1ac88f49027d2a1b8f0f2cf4905954a4791e79264e85"
-  CONFIG_QUELLE="config.example.json"
-fi
+# Stimme: Standardstimme der Sprache aus voices.json (Name, Adresse, Prüfsumme). In der App später änderbar.
+STIMME="$(python3 - "$SRC/voices.json" "$LANGUAGE" <<'PY'
+import json, sys
+daten = json.load(open(sys.argv[1], encoding="utf-8"))
+quelle = daten["quelle"]
+eintraege = [v for v in daten["stimmen"] if v["sprache"] == sys.argv[2]]
+if not eintraege:
+    sys.exit(1)
+v = next((e for e in eintraege if e.get("standard")), eintraege[0])
+print(v["modell"], quelle + v["pfad"] + ".onnx", v["sha256"], quelle + v["pfad"] + ".onnx.json", v["json_sha256"], v["id"], v.get("sprachcode", ""), sep="\t")
+PY
+)" || { echo "Für '$LANGUAGE' fehlt eine Stimme in voices.json / no voice for '$LANGUAGE' in voices.json"; exit 1; }
+IFS=$'\t' read -r VOICE_NAME VOICE_URL VOICE_SHA VOICE_JSON_URL VOICE_JSON_SHA VOICE_ID VOICE_CODE <<< "$STIMME"
+if [ "$LANGUAGE" = "de" ]; then CONFIG_QUELLE="config.example.json"; else CONFIG_QUELLE="config.example.en.json"; fi
 
 lade() {
   local url="$1" ziel="$2" summe="$3" teil
@@ -53,7 +60,7 @@ lade() {
 echo "== Omaclusive wird nach ${DEST} gelegt. Der bisherige Talker bleibt."
 mkdir -p "$DEST" "$APPS" "${DEST}/voices"
 for f in index.html setup.html editor.html modi.json modi.py app.js pfad.js sprache.js i18n.py sprache_wechseln.py audio_erzeugen.py \
-  server.py bausteine.py hilferuf.py praxis.py ohr.py config.example.json config.example.en.json \
+  server.py stimmen.py voices.json bausteine.py hilferuf.py praxis.py ohr.py config.example.json config.example.en.json \
   start-talker.sh start-talker-fenster.sh startlib.sh zurueck.sh README.md README.de.md LICENSE CREDITS.md; do
   cp "$SRC/$f" "$DEST/"
 done
@@ -102,18 +109,36 @@ else
 fi
 
 if [ -f "${DEST}/config.json" ]; then
-  echo "== Vorhandene config.json bleibt."
+  if [ "$SPRACHE_GEWAEHLT" = "ja" ]; then
+    echo "== Vorhandene config.json wird auf '${LANGUAGE}' umgestellt (Sicherung: config.json.bak)."
+    python3 "$DEST/sprache_wechseln.py" "$LANGUAGE"
+    DEST="$DEST" VOICE_ID="$VOICE_ID" VOICE_NAME="$VOICE_NAME" python3 - <<'PY'
+import json, os
+pfad = os.path.join(os.environ["DEST"], "config.json")
+with open(pfad, encoding="utf-8") as handle:
+    daten = json.load(handle)
+daten["stimmeId"] = os.environ["VOICE_ID"]
+daten["stimmeModell"] = os.environ["VOICE_NAME"]
+with open(pfad, "w", encoding="utf-8") as handle:
+    json.dump(daten, handle, ensure_ascii=False, indent=2)
+    handle.write("\n")
+PY
+  else
+    echo "== Vorhandene config.json bleibt."
+  fi
 else
   if [ -f "$SRC/config.json" ]; then
     cp "$SRC/config.json" "${DEST}/config.json"
   else
     cp "$SRC/$CONFIG_QUELLE" "${DEST}/config.json"
   fi
-  DEST="$DEST" python3 - <<'PY'
+  DEST="$DEST" VOICE_ID="$VOICE_ID" VOICE_NAME="$VOICE_NAME" python3 - <<'PY'
 import json, os
 pfad = os.path.join(os.environ["DEST"], "config.json")
 with open(pfad, encoding="utf-8") as handle:
     daten = json.load(handle)
+daten["stimmeId"] = os.environ["VOICE_ID"]
+daten["stimmeModell"] = os.environ["VOICE_NAME"]
 daten.setdefault("einrichtung", {})["fertig"] = False
 with open(pfad, "w", encoding="utf-8") as handle:
     json.dump(daten, handle, ensure_ascii=False, indent=2)

@@ -84,8 +84,8 @@
           }
         },
         {
-          "wort": "Films",
-          "sprechen": "Films",
+          "wort": "Movies",
+          "sprechen": "Movies",
           "bild": "img/fernsehen.svg",
           "aktion": {
             "typ": "ordner",

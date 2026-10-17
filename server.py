@@ -48,6 +48,8 @@ def _config_aendern(fn):
         config = _lade_config()
         if fn(config): _schreibe_config(config)
         return config
+def _config_aendern_fn(fn):
+    return _config_aendern(fn)
 def _bewahre_kanaele(neu, alt):
     if not isinstance(neu, dict): return
     alt_h = alt.get("hilferuf") if isinstance(alt, dict) and isinstance(alt.get("hilferuf"), dict) else {}
@@ -244,6 +246,12 @@ class H(http.server.SimpleHTTPRequestHandler):
             if os.path.exists(p): launch("file", p); return s.j({"ok": True})
             return s.j({"ok": False}, 404)
         if u.path == "/api/back": back(); return s.j({"ok": True})
+        if u.path == "/api/stimmen":
+            import stimmen
+            config = _lade_config(); aktiv = stimmen.aktive_id(config)
+            return s.j({"aktiv": aktiv, "job": stimmen.status(), "stimmen": [
+                {"id": v["id"], "sprache": v["sprache"], "name": v["name"], "info": v.get("info", ""), "mb": v.get("mb", 0),
+                 "da": stimmen.da(v), "aktiv": v["id"] == aktiv} for v in stimmen.liste()]})
         if u.path == "/api/hinweis":
             import bausteine
             return s.j({"ok": bool(bausteine.hinweis_ton())})
@@ -327,6 +335,12 @@ class H(http.server.SimpleHTTPRequestHandler):
         if pfad == "/api/film":
             if not isinstance(data, dict): return s.j({"ok": False}, 400)
             return s.j(_film_starten(data.get("name", "")))
+        if pfad == "/api/sprache":
+            if not _lokal_ok(s): return s.j({"ok": False}, 403)
+            if not isinstance(data, dict) or not isinstance(data.get("id"), str): return s.j({"ok": False}, 400)
+            import stimmen
+            ok, grund = stimmen.starten(data["id"], _config_aendern_fn)
+            return s.j({"ok": ok, "grund": grund}, 200 if ok else (409 if grund == "laeuft" else 400))
         if pfad == "/api/autostart":
             if not _lokal_ok(s): return s.j({"ok": False}, 403)
             if not isinstance(data, dict) or not isinstance(data.get("an"), bool): return s.j({"ok": False}, 400)

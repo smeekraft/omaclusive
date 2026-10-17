@@ -43,7 +43,7 @@ def main():
         zu_hause = bausteine._vorgefertigt("Yes.", "piper")
         if not zu_hause or "audio" + os.sep + "en" not in zu_hause:
             raise SystemExit("Englische Aufnahme fehlt fuer Yes.")
-        if "Going back to the start soon." not in bausteine.texte_aus_config(config):
+        if "Going back to the start in a moment." not in bausteine.texte_aus_config(config):
             raise SystemExit("Englischer Hinweis fehlt im Sprachspeicher")
         if bausteine._key("piper", "Yes.") != "en\0piper@%s\0Yes." % bausteine.tempo():
             raise SystemExit("Englischer Schluessel")

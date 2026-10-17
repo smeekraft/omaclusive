@@ -409,6 +409,12 @@ function mitZurueck() {
 
 // Jede Frage der Einrichtung zeigt höchstens zwei Kacheln.
 function setupPaar() {
+  if (schritt === "sprache") {
+    // Zweisprachig beschriftet. Die Sprache des Systems steht links (vorgewählt).
+    const de = { wort: "Deutsch", sprechen: "Deutsch", bild: "img/sagen.svg", wert: "de" };
+    const en = { wort: "English", sprechen: "English", bild: "img/sagen.svg", wert: "en" };
+    return Pfad.duoPaar(systemSprache() === "de" ? [de, en] : [en, de], 0, false);
+  }
   if (schritt === "bedienung") {
     return Pfad.duoPaar([
       { wort: T("Stimme"), sprechen: T("Stimme"), bild: "img/diktat.svg", wert: "stimme" },
@@ -440,7 +446,13 @@ function wortePaar(p) {
   return [Pfad.wortVon(p.links), Pfad.wortVon(p.rechts)];
 }
 
+function systemSprache() {
+  const roh = String(params.get("navlang") || (navigator.languages && navigator.languages[0]) || navigator.language || "en");
+  return roh.toLowerCase().indexOf("de") === 0 ? "de" : "en";
+}
+
 function setupFrage() {
+  if (schritt === "sprache") return "Sprache · Language";
   if (schritt === "bedienung") return T("Wie willst du bedienen?");
   if (schritt === "knopf") return T("Wie viele Knöpfe?");
   if (schritt === "autostart") return T("Mit dem Rechner starten?");
@@ -1261,7 +1273,7 @@ function setupFertig(entscheid) {
   entscheid = entscheid || Pfad.einrichtungStandard();
   const modus = entscheid.modus || "b";
   const knopf = entscheid.knopf || knopfWahl || (C.knopf && C.knopf.modus) || "zwei";
-  C.einrichtung = { fertig: true, stand: Pfad.EINRICHTUNG_STAND, bedienung: entscheid.bedienung || bedienungWahl || "knoepfe" };
+  C.einrichtung = { fertig: true, sprache: true, stand: Pfad.EINRICHTUNG_STAND, bedienung: entscheid.bedienung || bedienungWahl || "knoepfe" };
   C.modus = modus;
   C.hoeren = (entscheid.hoeren === true) || hoerenWahl === true;
   if (!C.knopf) C.knopf = { modus: "zwei", scanMs: 3000 };
@@ -1292,6 +1304,61 @@ function setupFertig(entscheid) {
   });
 }
 
+// Erster Schritt: Sprache. Gleiche Sprache: nur merken. Andere: Texte und Stimme umstellen (Server), dann neu laden.
+function spracheErstFlag(extra) {
+  C.einrichtung = Object.assign({}, C.einrichtung, { sprache: true }, extra || {});
+}
+
+function spracheErstWeiter() {
+  schritt = "bedienung";
+  wahlIndex = 0;
+  render();
+  sprich(setupAnsage());
+  armSetup();
+}
+
+function spracheErstFehler() {
+  const text = "Das Laden hat nicht geklappt. Ist das Internet an? · Download failed. Is the internet on?";
+  schritt = "sprache";
+  wahlIndex = 0;
+  render();
+  el("ebene").textContent = text;
+  sprich(text);
+  armSetup();
+}
+
+function spracheErstWahl(sprache) {
+  const gleich = String((C && C.language) || "de").split("-")[0] === sprache;
+  if (window.__selftest || window.__test) {
+    window.__spracheWahl = sprache;
+    spracheErstFlag();
+    return spracheErstWeiter();
+  }
+  if (gleich) {
+    spracheErstFlag();
+    return speichere().then(spracheErstWeiter);
+  }
+  el("ebene").textContent = "Einen Moment … · One moment …";
+  fetch("/api/sprache", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: sprache }) })
+    .then(r => { if (!r.ok) throw new Error("sprache"); })
+    .then(() => new Promise((ok, nein) => {
+      const t = setInterval(() => {
+        fetch("/api/stimmen", { cache: "no-store" }).then(r => r.json()).then(z => {
+          if (z.job.status === "laeuft") return;
+          clearInterval(t);
+          if (z.job.status === "fertig") ok(); else nein(new Error("laden"));
+        }).catch(() => {});
+      }, 800);
+    }))
+    .then(() => fetch("config.json", { cache: "no-store" }).then(r => r.json()))
+    .then(c => {
+      c.einrichtung = Object.assign({}, c.einrichtung, { sprache: true });
+      return fetch("/api/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(c) });
+    })
+    .then(r => { if (!r.ok) throw new Error("speichern"); location.reload(); })
+    .catch(spracheErstFehler);
+}
+
 function setupWahl(card) {
   clearSetup();
   fokus = "links";
@@ -1303,6 +1370,7 @@ function setupWahl(card) {
     return;
   }
   const entscheid = Pfad.einrichtungWahl(schritt, card.wert);
+  if (entscheid.sprache) return spracheErstWahl(entscheid.sprache);
   if (entscheid.bedienung) bedienungWahl = entscheid.bedienung;
   if (entscheid.knopf) knopfWahl = entscheid.knopf;
   if (entscheid.modus) modusWahl = entscheid.modus;
@@ -2020,7 +2088,7 @@ fetch("config.json", { cache: "no-store" })
   .then(() => {
     if (setupNoetig()) {
       phase = "setup";
-      schritt = "bedienung";
+      schritt = Pfad.einrichtungStart(C.einrichtung);
       wahlIndex = 0;
       render();
       sprich(setupAnsage());

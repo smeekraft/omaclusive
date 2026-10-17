@@ -1,0 +1,75 @@
+{
+  "quelle": "https://huggingface.co/rhasspy/piper-voices/resolve/main/",
+  "stimmen": [
+    {
+      "id": "de",
+      "sprache": "de",
+      "sprachcode": "de-DE",
+      "name": "Deutsch",
+      "info": "Thorsten, medium",
+      "standard": true,
+      "modell": "de_DE-thorsten-medium",
+      "pfad": "de/de_DE/thorsten/medium/de_DE-thorsten-medium",
+      "sha256": "7e64762d8e5118bb578f2eea6207e1a35a8e0c30595010b666f983fc87bb7819",
+      "json_sha256": "974adee790533adb273a1ac88f49027d2a1b8f0f2cf4905954a4791e79264e85",
+      "mb": 63,
+      "lizenz": "CC0"
+    },
+    {
+      "id": "en",
+      "sprache": "en",
+      "sprachcode": "en-US",
+      "name": "English (US), male",
+      "info": "John, medium",
+      "standard": true,
+      "modell": "en_US-john-medium",
+      "pfad": "en/en_US/john/medium/en_US-john-medium",
+      "sha256": "789c6c875726e627ddee93d51d8727859abe9c091c3d141591f4b83c2072e988",
+      "json_sha256": "af60f177b6b550f3d7a302720c0fb89e7f94a82b5dca464775ef63b1c69ba09a",
+      "mb": 61,
+      "lizenz": "public domain"
+    },
+    {
+      "id": "en-us-lj",
+      "sprache": "en",
+      "sprachcode": "en-US",
+      "name": "English (US), female",
+      "info": "LJ Speech, medium",
+      "standard": false,
+      "modell": "en_US-ljspeech-medium",
+      "pfad": "en/en_US/ljspeech/medium/en_US-ljspeech-medium",
+      "sha256": "6f52a751e2349abe7a76735eb09dc1875298c77ea2342ffd2fef79ff81b87f22",
+      "json_sha256": "141d612cc0a95ed7efc1ca936b845c2364967f2e9217c5dbfcf69fc4d6c65860",
+      "mb": 64,
+      "lizenz": "public domain"
+    },
+    {
+      "id": "en-us-hoch",
+      "sprache": "en",
+      "sprachcode": "en-US",
+      "name": "English (US), female, best quality",
+      "info": "LJ Speech, high",
+      "standard": false,
+      "modell": "en_US-ljspeech-high",
+      "pfad": "en/en_US/ljspeech/high/en_US-ljspeech-high",
+      "sha256": "5d4f08ba6a2a48c44592eed3ce56bf85e9de3dd4e20df90541ae68a8310c029a",
+      "json_sha256": "7e1f4634af596d83cca997fb7a931ba80b70f8a316a2655ee69c55365e0ace14",
+      "mb": 114,
+      "lizenz": "public domain"
+    },
+    {
+      "id": "en-gb",
+      "sprache": "en",
+      "sprachcode": "en-GB",
+      "name": "English (UK), female",
+      "info": "Cori, high",
+      "standard": false,
+      "modell": "en_GB-cori-high",
+      "pfad": "en/en_GB/cori/high/en_GB-cori-high",
+      "sha256": "470b4dd634c98f8a4850d7626ffc3dfc90774628eeef6605a6dd8f88f30a5903",
+      "json_sha256": "9e7fb5b5671612c22f3c81cbe46c1ae87b031a4632bcb509e499dad6f1e2adec",
+      "mb": 114,
+      "lizenz": "public domain"
+    }
+  ]
+}

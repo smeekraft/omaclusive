@@ -21,12 +21,17 @@ Source: https://huggingface.co/rhasspy/piper-voices under `de/de_DE/thorsten/med
 Checked 15.10.2026 against the model card there: dataset Thorsten-Voice, licence CC0. The same card says the model was finetuned from the
 US English "lessac" voice. Omaclusive ships no voice file, `install.sh` downloads it, and the recordings in `audio/` are generated audio of this voice.
 
-## Voice LJ Speech (English)
+## Voice John (English, default)
 
-File `en_US-ljspeech-medium`. Trained from scratch on the LJ Speech dataset by Keith Ito, public domain.
-Source: https://huggingface.co/rhasspy/piper-voices under `en/en_US/ljspeech/medium/`.
-Checked 15.10.2026 against the model card there: licence public domain, trained from scratch.
+File `en_US-john-medium`. US English male voice, one speaker, from recordings of LibriVox (https://librivox.org), licence public domain. Finetuned from the voice Kristin; dataset compiled by the voice author, see https://brycebeattie.com/files/tts/.
+Source: https://huggingface.co/rhasspy/piper-voices under `en/en_US/john/medium/`.
+Checked 17.10.2026 against the model card there: licence public domain.
 The recordings in `audio/en/` and `audio/de/` were made with these two voices.
+
+## Optional English voices (choose in the app)
+
+Downloaded only when picked, from https://huggingface.co/rhasspy/piper-voices, checksums in `voices.json`. Checked 17.10.2026 against the model cards:
+`en_US-ljspeech-medium` and `en_US-ljspeech-high` (LJ Speech by Keith Ito, public domain, `en/en_US/ljspeech/`) and `en_GB-cori-high` (British English, recordings from LibriVox, public domain, dataset compiled by the voice author, see https://brycebeattie.com/files/tts/, `en/en_GB/cori/high/`).
 
 ## Vosk (optional voice listening)
 
@@ -65,12 +70,17 @@ Am 15.10.2026 an der dortigen Modellkarte geprüft: Datensatz Thorsten-Voice, Li
 von der US-englischen Stimme „lessac“ weitertrainiert wurde. Omaclusive liefert keine Stimmdatei mit, `install.sh` lädt sie,
 und die Aufnahmen in `audio/` sind erzeugtes Audio dieser Stimme.
 
-## Stimme LJ Speech (Englisch)
+## Stimme John (Englisch, Standard)
 
-Datei `en_US-ljspeech-medium`. Trainiert auf dem LJ-Speech-Datensatz von Keith Ito, gemeinfrei.
-Quelle: https://huggingface.co/rhasspy/piper-voices unter `en/en_US/ljspeech/medium/`.
-Am 15.10.2026 an der dortigen Modellkarte geprüft: gemeinfrei, von Grund auf trainiert.
+Datei `en_US-john-medium`. US-englische männliche Stimme, ein Sprecher, aus Aufnahmen von LibriVox (https://librivox.org), gemeinfrei. Von der Stimme Kristin weitertrainiert; Datensatz vom Stimm-Autor zusammengestellt, siehe https://brycebeattie.com/files/tts/.
+Quelle: https://huggingface.co/rhasspy/piper-voices unter `en/en_US/john/medium/`.
+Am 17.10.2026 an der dortigen Modellkarte geprüft: gemeinfrei.
 Die Aufnahmen in `audio/de/` und `audio/en/` sind mit diesen beiden Stimmen entstanden.
+
+## Wählbare englische Stimmen (in der App)
+
+Werden nur geladen, wenn man sie wählt, von https://huggingface.co/rhasspy/piper-voices, Prüfsummen in `voices.json`. Am 17.10.2026 an den Modellkarten geprüft:
+`en_US-ljspeech-medium` und `en_US-ljspeech-high` (LJ Speech von Keith Ito, gemeinfrei, `en/en_US/ljspeech/`) und `en_GB-cori-high` (britisches Englisch, Aufnahmen von LibriVox, gemeinfrei, Datensatz vom Stimm-Autor zusammengestellt, siehe https://brycebeattie.com/files/tts/, `en/en_GB/cori/high/`).
 
 ## Vosk (Sprecherkennung, optional)
 

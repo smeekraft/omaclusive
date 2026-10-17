@@ -58,7 +58,7 @@ def main():
     if i18n.tr("Gleich zurück zum Start.") != "Gleich zurück zum Start.":
         raise SystemExit("Deutsch hat sich veraendert")
     os.environ["OMACLUSIVE_LANG"] = "en"
-    if i18n.tr("Gleich zurück zum Start.") != "Going back to the start soon.":
+    if i18n.tr("Gleich zurück zum Start.") != "Going back to the start in a moment.":
         raise SystemExit("Englisch fehlt")
     if i18n.trf("Verbunden mit {}", "Netz") != "Connected to Netz":
         raise SystemExit("Platzhalter")

@@ -1,17 +1,16 @@
 "use strict";
 /* Zweisprachigkeit de/en. Schluessel ist der deutsche Originaltext.
    Tabellen: locales/de.json, locales/en.json. Sprache: ?lang=en in der Adresse,
-   sonst "language" in config.json, sonst "de". Unbekannte Sprache faellt auf Englisch.
+   sonst "language" in config.json, sonst "de". Jeder Code mit locales/xx.json geht. Fehlt die Datei, faellt es auf Englisch zurueck.
    Fehlt ein Eintrag, bleibt der Originaltext stehen. */
 (function (g) {
-  const SPRACHEN = ["de", "en"];
   let sprache = "de";
   let tabelle = {};
 
   function normal(code) {
     const c = String(code || "").trim().toLowerCase().replace("_", "-").split("-")[0];
     if (!c) return "de";
-    return SPRACHEN.indexOf(c) >= 0 ? c : "en";
+    return /^[a-z]{2,3}$/.test(c) ? c : "en";
   }
 
   function T(text) {
@@ -30,9 +29,9 @@
     sprache = normal(code);
     g.document && g.document.documentElement && g.document.documentElement.setAttribute("lang", sprache);
     if (sprache === "de") return Promise.resolve();
-    return fetch("locales/" + sprache + ".json", { cache: "no-store" })
-      .then(r => (r.ok ? r.json() : {}))
-      .catch(() => ({}))
+    const hole = code => fetch("locales/" + code + ".json", { cache: "no-store" }).then(r => (r.ok ? r.json() : null)).catch(() => null);
+    return hole(sprache)
+      .then(t => t || (sprache = "en", g.document && g.document.documentElement.setAttribute("lang", "en"), hole("en")))
       .then(t => { tabelle = t && typeof t === "object" ? t : {}; });
   }
 

@@ -20,7 +20,7 @@ import subprocess
 import sys
 
 DIR = os.path.dirname(os.path.abspath(__file__))
-STIMMEN = {"de": "de_DE-thorsten-medium.onnx", "en": "en_US-ljspeech-medium.onnx"}
+STIMMEN = {"de": "de_DE-thorsten-medium.onnx", "en": "en_US-john-medium.onnx"}
 CONFIGS = {"de": ("config.example.json", "plugins/grundbeduerfnisse/plugin.json"),
            "en": ("config.example.en.json", "plugins/grundbeduerfnisse/plugin.en.json")}
 AUFNAHME_TEMPO = 1.15  # Piper length_scale: etwas langsamer. Muss zu bausteine.AUFNAHME_TEMPO passen.

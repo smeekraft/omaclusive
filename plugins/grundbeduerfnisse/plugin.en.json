@@ -22,12 +22,12 @@
       }
     },
     {
-      "wort": "Toilet",
-      "sprechen": "Toilet",
+      "wort": "Bathroom",
+      "sprechen": "Bathroom",
       "bild": "toilette.svg",
       "aktion": {
         "typ": "sprechen",
-        "text": "I need to use the toilet."
+        "text": "I need to use the bathroom."
       }
     },
     {

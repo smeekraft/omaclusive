@@ -130,6 +130,7 @@ function schreibeConfig(sprache, aendern) {
   c.waehlSekunden = 0; // die Wahl-Wartezeit hat einen eigenen Lauf, sonst wartet jeder Test 3 s
   c.modus = "c"; // der Pfad gleicht der Vorlage "mehr Auswahl" (wie der alte Standard); Modi prüft ein eigener Lauf
   aendern(c);
+  if (c.einrichtung && c.einrichtung.sprache === undefined) c.einrichtung.sprache = true; // die Sprachfrage hat eigene Läufe
   if (c.einrichtung && c.einrichtung.fertig === true && c.einrichtung.stand === undefined) c.einrichtung.stand = 2;
   fs.writeFileSync(cfgPfad, JSON.stringify(c, null, 2));
 }
@@ -218,11 +219,11 @@ const RECHTE = [1110, 400];
 
 const FRAGE = {
   de: { bedienung: "Wie willst du bedienen?", knopf: "Wie viele Knöpfe?", modus: "Wie viel Auswahl?", autostart: "Mit dem Rechner starten?" },
-  en: { bedienung: "How do you want to use it?", knopf: "How many buttons?", modus: "How much choice?", autostart: "Start with the computer?" },
+  en: { bedienung: "How do you want to control it?", knopf: "How many buttons?", modus: "How many choices?", autostart: "Start at login?" },
 };
 const WORT = {
   de: { stimme: "Stimme", knoepfe: "Knöpfe, Maus, Tasten", zwei: "Zwei Knöpfe", ein: "Ein Knopf", b: "Einfach", a: "Ganz einfach", c: "Mehr Auswahl", nein: "Nein", ja: "Ja" },
-  en: { stimme: "Voice", knoepfe: "Buttons, mouse, keys", zwei: "Two buttons", ein: "One button", b: "Simple", a: "Very simple", c: "More choice", nein: "No", ja: "Yes" },
+  en: { stimme: "Voice", knoepfe: "Buttons, mouse, keys", zwei: "Two buttons", ein: "One button", b: "Simple", a: "Very simple", c: "More choices", nein: "No", ja: "Yes" },
 };
 const kacheln = client => ev(client, "document.querySelectorAll('button.karte').length");
 const ebene = client => ev(client, "document.getElementById('ebene').textContent");
@@ -294,6 +295,41 @@ async function setupAblauf(client, t, ein, sprache) {
   pruefe(t + ": kein stiller Autostart-Eintrag", !autostartDa());
   pruefe(t + ": Mikrofon bleibt aus", g.hoeren !== true);
   pruefe(t + ": Einstellungstaste nach der Einrichtung da", await ev(client, "getComputedStyle(document.getElementById('setup')).display !== 'none'"));
+}
+
+// Allererster Schritt der Einrichtung: Sprache. wahl = "links" | "rechts"; erwartet = Sprache nach der Wahl.
+async function spracheZuerst(client, t, sprache, system, wahl, erwartet) {
+  let z = await zustand(client);
+  pruefe(t + ": Einrichtung beginnt mit der Sprache", z.phase === "setup" && z.schritt === "sprache", z);
+  pruefe(t + ": zweisprachige Frage", (await ebene(client)) === "Sprache · Language", await ebene(client));
+  pruefe(t + ": Frage wird angesagt", (await gesprochen(client)).some(x => x.indexOf("Sprache · Language") === 0));
+  const erst = system === "de" ? "Deutsch" : "English", zweit = system === "de" ? "English" : "Deutsch";
+  pruefe(t + ": Systemsprache steht links (vorgewählt), zwei große Kacheln", z.paar.links === erst && z.paar.rechts === zweit && (await kacheln(client)) === 2, z.paar);
+  await sleep(2500);
+  pruefe(t + ": wartet ohne Zeitlimit", (await zustand(client)).schritt === "sprache");
+  await taste(client, wahl === "links" ? "ArrowLeft" : "ArrowRight");
+  let ok = false;
+  for (let i = 0; i < 400 && !ok; i++) {
+    await sleep(150);
+    try { z = await zustand(client); ok = z.phase === "setup" && z.schritt === "bedienung"; } catch (err) {}
+  }
+  pruefe(t + ": weiter mit der ersten Frage", ok, z);
+  const g = JSON.parse(fs.readFileSync(cfgPfad, "utf8"));
+  pruefe(t + ": Sprache gespeichert: " + erwartet, g.language === erwartet && g.einrichtung.sprache === true && g.einrichtung.fertig === false, { l: g.language, e: g.einrichtung });
+  pruefe(t + ": erste Frage in " + erwartet, (await ebene(client)) === FRAGE[erwartet].bedienung, await ebene(client));
+  pruefe(t + ": Stimme passt", erwartet === "en" ? g.stimmeModell === undefined || g.stimmeModell === "en_US-john-medium" : g.stimmeModell === undefined || g.stimmeModell === "de_DE-thorsten-medium", g.stimmeModell);
+}
+
+// Einstellungen: die Sprachwahl ist immer erreichbar, zweisprachig beschriftet, mit John als erster englischer Kachel.
+async function spracheInEinstellungen(client, t, sprache) {
+  const knopf = JSON.parse(await ev(client, "JSON.stringify({t:document.getElementById('sprachBtn').textContent,vis:getComputedStyle(document.getElementById('sprachBtn')).display!=='none'})"));
+  pruefe(t + ": Sprach-Knopf sichtbar, zweisprachig beschriftet", knopf.vis && knopf.t.indexOf("Sprache") !== -1 && knopf.t.indexOf("Language") !== -1, knopf);
+  await ev(client, "document.getElementById('sprachBtn').click()");
+  await sleep(800);
+  const k = JSON.parse(await ev(client, "JSON.stringify([...document.querySelectorAll('#sprachen button')].map(b=>b.firstChild.textContent))"));
+  pruefe(t + ": Sprachliste mit Deutsch und English", k.includes("Deutsch") && k.some(x => x.indexOf("English") === 0) && k.length >= 3, k);
+  const reihe = k.filter(x => x.indexOf("English") === 0);
+  pruefe(t + ": erste englische Kachel ist die männliche Standardstimme", reihe[0] === "English (US), male", reihe);
 }
 
 // Maus: Rechtsklick = rechte Kachel, direkter Klick auf Kacheln. Wählt Ein Knopf und "Mehr Auswahl" (Modus c).
@@ -374,7 +410,7 @@ async function modusPfad(client, t, sprache, modus) {
 
 // "Gleich zurück": Ansage genau einmal, Zahl und Balken, Eingabe bricht ab, sonst zurück zum Start.
 async function gleichZurueck(client, t, sprache) {
-  const text = sprache === "en" ? "Going back to the start soon." : "Gleich zurück zum Start.";
+  const text = sprache === "en" ? "Going back to the start in a moment." : "Gleich zurück zum Start.";
   await ev(client, "(()=>{window.__sprache=[];return 1})()");
   await taste(client, "ArrowLeft"); // öffnet "Ich will was sagen"
   await sleep(SPAET);
@@ -607,7 +643,7 @@ async function autostartSchalter(client, t, sprache) {
     rq.on("error", () => res({ s: 0, b: null })); rq.end(body === undefined ? undefined : JSON.stringify(body));
   });
   pruefe(t + ": Haken ist ein Kontrollkästchen und zeigt aus (keine Datei)", (await ev(client, "document.getElementById('autoBox').type")) === "checkbox" && !(await box()) && !fs.existsSync(desk));
-  pruefe(t + ": Text neben dem Haken", (await ev(client, "document.getElementById('autoText').textContent")) === (sprache === "en" ? "Start with the computer" : "Mit dem Rechner starten"));
+  pruefe(t + ": Text neben dem Haken", (await ev(client, "document.getElementById('autoText').textContent")) === (sprache === "en" ? "Start at login" : "Mit dem Rechner starten"));
   await ev(client, "document.getElementById('autoBox').click()");
   await sleep(500);
   pruefe(t + ": Haken an legt die Datei an", fs.existsSync(desk) && (await box()));
@@ -690,7 +726,7 @@ async function diashow(client, t, sprache) {
 }
 
 async function filmListe(client, t, sprache) {
-  const W = sprache === "en" ? { filme: "Films", zurueck: "Back", pause: "Pause", weiter: "Continue", blaettern: "Next page" } : { filme: "Filme", zurueck: "Zurück", pause: "Pause", weiter: "Weiter", blaettern: "Weiter blättern" };
+  const W = sprache === "en" ? { filme: "Movies", zurueck: "Back", pause: "Pause", weiter: "Continue", blaettern: "Next page" } : { filme: "Filme", zurueck: "Zurück", pause: "Pause", weiter: "Weiter", blaettern: "Weiter blättern" };
   pruefe(t + ": Filme auf dem Start gefunden", await waehleKarteMitWort(client, W.filme));
   await sleep(700);
   let z = await zustand(client);
@@ -736,7 +772,7 @@ async function filmListe(client, t, sprache) {
 
 // Ein-Knopf: die Abtastung läuft über beide Filme, "Weiter blättern" und "Zurück"
 async function filmScan(client, t, sprache) {
-  const W = sprache === "en" ? { filme: "Films" } : { filme: "Filme" };
+  const W = sprache === "en" ? { filme: "Movies" } : { filme: "Filme" };
   pruefe(t + ": Filme gefunden (Scan)", await (async () => {
     for (let i = 0; i < 80; i++) {
       const z = await zustand(client);
@@ -852,6 +888,33 @@ async function rangeTest(client, t, sprache) {
 
 async function main() {
   const T = Date.now();
+  const stimmenOrdner = path.join(root, "voices");
+  const quellen = ["/workspace/_tts/voices/de_DE-thorsten-medium", "/workspace/hoerproben-en/modelle/en_US-john-medium"];
+  const modelleDa = quellen.every(q => fs.existsSync(q + ".onnx") && fs.existsSync(q + ".onnx.json"));
+  const angelegt = [];
+  try {
+    for (const sprache of ["de", "en"]) {
+      const L = sprache.toUpperCase();
+      const frei = c => { c.einrichtung.fertig = false; c.einrichtung.sprache = false; c.knopf.modus = "zwei"; };
+      await szenario(L + " Sprachwahl zuerst (System de, gleiche Sprache)", sprache, frei, "?navlang=de", (cl, t) => spracheZuerst(cl, t, sprache, "de", sprache === "de" ? "links" : "rechts", sprache));
+      await szenario(L + " Sprachwahl zuerst (System en, gleiche Sprache)", sprache, frei, "?navlang=en", (cl, t) => spracheZuerst(cl, t, sprache, "en", sprache === "en" ? "links" : "rechts", sprache));
+      await szenario(L + " Sprache in den Einstellungen", sprache, c => { c.einrichtung.fertig = true; c.zurueck.sekunden = 0; }, "setup.html", (cl, t) => spracheInEinstellungen(cl, t, sprache));
+    }
+    if (modelleDa) {
+      fs.mkdirSync(stimmenOrdner, { recursive: true });
+      for (const q of quellen) for (const e of [".onnx", ".onnx.json"]) {
+        const ziel = path.join(stimmenOrdner, path.basename(q) + e);
+        if (!fs.existsSync(ziel)) { fs.copyFileSync(q + e, ziel); angelegt.push(ziel); }
+      }
+      const frei = c => { c.einrichtung.fertig = false; c.einrichtung.sprache = false; c.knopf.modus = "zwei"; };
+      await szenario("DE Sprachwahl zuerst: English wählen stellt um", "de", frei, "?navlang=de", (cl, t) => spracheZuerst(cl, t, "de", "de", "rechts", "en"));
+      await szenario("EN Sprachwahl zuerst: Deutsch wählen stellt um", "en", frei, "?navlang=en", (cl, t) => spracheZuerst(cl, t, "en", "en", "rechts", "de"));
+    } else {
+      console.log("Hinweis: Stimmen für den Umstell-Test fehlen, übersprungen");
+    }
+  } finally {
+    angelegt.forEach(f => { try { fs.unlinkSync(f); } catch (err) {} });
+  }
   for (const sprache of ["de", "en"]) {
     const L = sprache.toUpperCase();
     await szenario(L + " Einrichtung Zwei-Knopf (Tasten, Linksklick)", sprache, c => { c.einrichtung.fertig = false; c.knopf.modus = "zwei"; }, "", (cl, t) => setupAblauf(cl, t, false, sprache));

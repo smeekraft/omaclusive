@@ -9,7 +9,7 @@ const fail = m => { console.error("I18N_JS_FAIL " + m); process.exit(1); };
   await I18N.laden("de");
   if (T("Ich rufe.") !== "Ich rufe.") fail("de");
   await I18N.laden("en");
-  if (T("Ich rufe.") !== "I am calling.") fail("en");
+  if (T("Ich rufe.") !== "Calling for help.") fail("en");
   if (Tf("{} oder {}.", "A", "B") !== "A or B.") fail("Tf");
   if (T("gibt es nicht") !== "gibt es nicht") fail("Fallback Original");
   await I18N.laden("fr");

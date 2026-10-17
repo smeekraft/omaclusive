@@ -74,12 +74,43 @@ def piper_bin():
 
 VOICES = {
     "de": ("de_DE-thorsten-medium.onnx", "de_DE-thorsten-high.onnx", "de_DE-thorsten-low.onnx"),
-    "en": ("en_US-ljspeech-medium.onnx", "en_US-ljspeech-high.onnx", "en_US-kristin-medium.onnx"),
+    "en": ("en_US-john-medium.onnx", "en_US-ljspeech-medium.onnx", "en_US-ljspeech-high.onnx"),
 }
+
+
+def _gewaehlt(lang=None):
+    """Modell aus config.json (stimmeModell), nur wenn es zur Sprache passt und da ist."""
+    lang = lang or language()
+    try:
+        with open(os.path.join(DIR, "config.json"), encoding="utf-8") as handle:
+            name = json.load(handle).get("stimmeModell")
+    except (OSError, ValueError, AttributeError):
+        return None
+    if isinstance(name, str) and name.startswith(lang + "_") and re.fullmatch(r"[A-Za-z0-9_.-]{1,80}", name):
+        pfad = os.path.join(DIR, "voices", name + ".onnx")
+        if os.path.isfile(pfad):
+            return pfad
+    return None
+
+
+def _ist_standardstimme():
+    """Die fertigen Aufnahmen in audio/ sind mit der Standardstimme der Sprache gemacht."""
+    gewaehlt = _gewaehlt()
+    if not gewaehlt:
+        return True
+    try:
+        import stimmen
+        s = stimmen.standard(language())
+        return bool(s) and os.path.basename(gewaehlt) == s["modell"] + ".onnx"
+    except ImportError:
+        return True
 
 
 def voice_model(lang=None):
     lang = lang or language()
+    gewaehlt = _gewaehlt(lang)
+    if gewaehlt:
+        return gewaehlt
     for name in VOICES.get(lang, VOICES["en"]):
         path = os.path.join(DIR, "voices", name)
         if os.path.isfile(path):
@@ -245,6 +276,9 @@ def _remember_phrase(key, wav):
 
 def _key(stimme, text):
     lang = language()
+    modell = _gewaehlt(lang)
+    if modell:
+        stimme = stimme + "#" + os.path.basename(modell)
     if tempo() != 1.0:
         stimme = stimme + "@" + str(tempo())
     return (stimme + "\0" + text) if lang == "de" else (lang + "\0" + stimme + "\0" + text)
@@ -256,7 +290,7 @@ _audio_index = {}
 def _vorgefertigt(text, stimme):
     """Fertige Aufnahme aus audio/<sprache>/ (Piper-Stimme). Sonst None.
     Nur fuer die Standardstimme; wer espeak waehlt, bekommt espeak."""
-    if stimme == "espeak" or tempo() != AUFNAHME_TEMPO:
+    if stimme == "espeak" or tempo() != AUFNAHME_TEMPO or not _ist_standardstimme():
         return None
     lang = language()
     if lang not in _audio_index:

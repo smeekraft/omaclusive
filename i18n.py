@@ -10,17 +10,26 @@ import json
 import os
 
 DIR = os.path.dirname(os.path.abspath(__file__))
-SPRACHEN = ("de", "en")
 STANDARD = "de"
 _tabellen = {}
 _cfg = {"mtime": None, "lang": STANDARD}
+
+
+def sprachen():
+    """de plus jede Sprache, fuer die locales/xx.json existiert."""
+    ordner = os.path.join(DIR, "locales")
+    try:
+        namen = {f[:-5] for f in os.listdir(ordner) if f.endswith(".json")}
+    except OSError:
+        namen = set()
+    return {STANDARD} | {n for n in namen if n.isalpha() and n.islower()}
 
 
 def normalisiere(code):
     code = str(code or "").strip().lower().replace("_", "-").split("-")[0]
     if not code:
         return STANDARD
-    return code if code in SPRACHEN else "en"
+    return code if code in sprachen() else "en"
 
 
 def _aus_config():
