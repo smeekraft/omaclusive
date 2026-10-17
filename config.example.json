@@ -1,0 +1,275 @@
+{
+  "version": 2,
+  "language": "de",
+  "modus": "b",
+  "einrichtung": {
+    "fertig": false
+  },
+  "bildstil": "glatt",
+  "anzeige": "beides",
+  "stimme": "piper",
+  "keys": {
+    "links": [
+      "ArrowLeft"
+    ],
+    "rechts": [
+      "ArrowRight"
+    ],
+    "waehlen": [
+      "ArrowUp",
+      " ",
+      "Enter"
+    ]
+  },
+  "knopf": {
+    "modus": "zwei",
+    "scanMs": 3000
+  },
+  "debounceMs": 300,
+  "speak": true,
+  "lang": "de-DE",
+  "start": "start",
+  "setupHoldMs": 3000,
+  "zurueck": {
+    "sekunden": 20,
+    "hinweis": "ansage",
+    "hinweisVorherSekunden": 5
+  },
+  "feste": {
+    "zurueck": {
+      "wort": "Zurück",
+      "bild": "img/zurueck.svg"
+    },
+    "nein": {
+      "wort": "Nein",
+      "bild": "img/nein.svg"
+    },
+    "ja": {
+      "wort": "Ja",
+      "bild": "img/ja.svg"
+    }
+  },
+  "ziele": {
+    "browser": "",
+    "suche": "",
+    "mail": "",
+    "messenger": "",
+    "videoanruf": "",
+    "musik": "",
+    "videos": "",
+    "text": "",
+    "diktat": ""
+  },
+  "screens": {
+    "start": {
+      "name": "Start",
+      "liste": [
+        {
+          "wort": "Ich will was sagen",
+          "sprechen": "Ich will was sagen",
+          "bild": "img/sagen.svg",
+          "aktion": {
+            "typ": "untermenue",
+            "ziel": "sagen"
+          }
+        },
+        {
+          "wort": "Bilder",
+          "sprechen": "Bilder",
+          "bild": "img/fotos.svg",
+          "aktion": {
+            "typ": "ordner",
+            "quelle": "bilder",
+            "ziel": "bilder"
+          }
+        },
+        {
+          "wort": "Filme",
+          "sprechen": "Filme",
+          "bild": "img/fernsehen.svg",
+          "aktion": {
+            "typ": "ordner",
+            "quelle": "filme",
+            "ziel": "filme"
+          }
+        },
+        {
+          "wort": "Radio",
+          "sprechen": "Radio",
+          "bild": "img/radio.svg",
+          "aktion": {
+            "typ": "radio"
+          }
+        },
+        {
+          "wort": "Aufgaben",
+          "sprechen": "Aufgaben",
+          "bild": "img/aufgabe.svg",
+          "aktion": {
+            "typ": "aufgaben"
+          }
+        },
+        {
+          "wort": "Steuern",
+          "sprechen": "Steuern",
+          "bild": "img/system.svg",
+          "aktion": {
+            "typ": "untermenue",
+            "ziel": "steuern"
+          }
+        }
+      ]
+    },
+    "sagen": {
+      "name": "Ich will was sagen",
+      "liste": [
+        {
+          "wort": "Hilferuf",
+          "sprechen": "Hilferuf",
+          "bild": "img/hilfe.svg",
+          "aktion": {
+            "typ": "hilferuf"
+          }
+        },
+        {
+          "wort": "Klingel",
+          "sprechen": "Klingel",
+          "bild": "img/ton.svg",
+          "aktion": {
+            "typ": "baustein",
+            "name": "help.local"
+          }
+        },
+        {
+          "wort": "Kontakt Eins",
+          "sprechen": "Kontakt Eins",
+          "bild": "img/kontakt-1.svg",
+          "aktion": {
+            "typ": "sprechen",
+            "text": "Ich möchte mit Kontakt Eins sprechen."
+          }
+        },
+        {
+          "wort": "Kontakt Zwei",
+          "sprechen": "Kontakt Zwei",
+          "bild": "img/kontakt-2.svg",
+          "aktion": {
+            "typ": "sprechen",
+            "text": "Ich möchte mit Kontakt Zwei sprechen."
+          }
+        },
+        {
+          "wort": "Kontakt Drei",
+          "sprechen": "Kontakt Drei",
+          "bild": "img/kontakt-3.svg",
+          "aktion": {
+            "typ": "sprechen",
+            "text": "Ich möchte mit Kontakt Drei sprechen."
+          }
+        }
+      ]
+    },
+    "steuern": {
+      "name": "Steuern",
+      "liste": [
+        {
+          "wort": "Lautstärke",
+          "sprechen": "Lautstärke",
+          "bild": "img/ton.svg",
+          "aktion": {
+            "typ": "untermenue",
+            "ziel": "lautstaerke"
+          }
+        },
+        {
+          "wort": "WLAN",
+          "sprechen": "WLAN",
+          "bild": "img/wlan.svg",
+          "aktion": {
+            "typ": "dynamisch",
+            "ziel": "wlan.list",
+            "quelle": "wlan.list"
+          }
+        },
+        {
+          "wort": "Bluetooth",
+          "sprechen": "Bluetooth",
+          "bild": "img/bluetooth.svg",
+          "aktion": {
+            "typ": "dynamisch",
+            "ziel": "bt.list",
+            "quelle": "bt.list"
+          }
+        },
+        {
+          "wort": "Ausschalten",
+          "sprechen": "Ausschalten",
+          "bild": "img/aus.svg",
+          "bestaetigen": true,
+          "abbruch": "Der Rechner bleibt an.",
+          "aktion": {
+            "typ": "baustein",
+            "name": "system.poweroff"
+          }
+        }
+      ]
+    },
+    "lautstaerke": {
+      "name": "Lautstärke",
+      "liste": [
+        {
+          "wort": "Lauter",
+          "sprechen": "Lauter",
+          "bild": "img/lauter.svg",
+          "aktion": {
+            "typ": "baustein",
+            "name": "volume.up"
+          }
+        },
+        {
+          "wort": "Leiser",
+          "sprechen": "Leiser",
+          "bild": "img/leiser.svg",
+          "aktion": {
+            "typ": "baustein",
+            "name": "volume.down"
+          }
+        },
+        {
+          "wort": "Stumm",
+          "sprechen": "Stumm",
+          "bild": "img/stumm.svg",
+          "aktion": {
+            "typ": "baustein",
+            "name": "volume.mute"
+          }
+        }
+      ]
+    }
+  },
+  "hilferuf": {
+    "name": "",
+    "server": "https://ntfy.sh",
+    "kanal": "",
+    "antwort": "",
+    "testTage": 30
+  },
+  "autostart": false,
+  "waehlSekunden": 3,
+  "stimmeTempo": 1.15,
+  "hoeren": false,
+  "bildSekunden": 10,
+  "radio": {
+    "modus": "browser",
+    "name": "Radio",
+    "url": "https://openradioworld.com/",
+    "stream": ""
+  },
+  "streaming": {
+    "aktiv": false,
+    "dienste": [],
+    "hinweis": "Platzhalter für spätere Updates. Heute ohne Funktion."
+  },
+  "erinnerungPruefSekunden": 20,
+  "erinnerungWiederholSekunden": 60
+}

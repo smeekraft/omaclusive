@@ -1,0 +1,235 @@
+<!doctype html><html lang="de" translate="no" class="notranslate"><head><meta charset="utf-8"><meta name="google" content="notranslate"><link rel="icon" href="data:,"><title>Einrichten</title>
+<script src="sprache.js"></script>
+<style>body{margin:0;background:#111;color:#fff;font-family:sans-serif;text-align:center}
+h1{font-size:3.2rem;margin:4vh 0 2vh}h2{font-size:2rem;margin:3vh 0 1vh}
+.row{display:flex;gap:2vw;justify-content:center;flex-wrap:wrap;padding:0 3vw}
+button{font-size:2rem;font-weight:800;padding:3vh 2vw;border:6px solid #fff;border-radius:24px;background:#222;color:#fff;cursor:pointer;min-width:26vw}
+button img{display:block;width:120px;margin:0 auto 1rem}button.small{font-size:1.3rem;padding:1rem 2rem;min-width:0;border-width:3px}
+button.care{border-color:#e85d04}
+input{font-size:1.8rem;width:70vw;padding:1rem;border-radius:12px;border:4px solid #fff}
+.haken{display:inline-flex;align-items:center;gap:1rem;font-size:1.6rem;font-weight:800;cursor:pointer}
+.haken input{width:2.4rem;height:2.4rem;accent-color:#ffd400;cursor:pointer}
+.hint{font-size:1.4rem;opacity:.8;margin:2vh}.hide{display:none}
+.warnung{background:#0c2340;color:#ffe14a;border:6px solid #ffe14a;margin:2vh 4vw;padding:2vh 2vw;font-size:1.7rem;font-weight:800;text-align:left}
+.warnung img{width:72px;height:72px;vertical-align:middle;margin-right:1rem}</style></head><body>
+<div id="v1"><div class="warnung"><img src="img/hilfe.svg" alt=""><span class="warnung-text">Der Hilferuf leitet Rufe an ein Handy weiter. Er ersetzt keinen Notruf.</span></div>
+ <h1>Was möchtest du einstellen?</h1><div class="row" id="cards"></div>
+ <p><button class="small" onclick="oeffneRuf()">Hilferuf</button>
+ <button class="small" onclick="location.href='api/blatt'">Bild-Blatt</button>
+ <button class="small" id="stilBtn" onclick="bildstilWechseln()"></button>
+ <button class="small" id="scanBtn" onclick="scanWechseln()"></button>
+ <button class="small" id="zurueckBtn" onclick="zurueckWechseln()"></button>
+ <button class="small" onclick="location.href='index.html'">Fertig</button></p>
+ <p class="hint" id="zeitHinweis"></p>
+ <p><button class="small" id="modusBtn" onclick="modusWechseln()"></button>
+ <button class="small" onclick="location.href='editor.html'">Pfad bearbeiten (Drag and Drop)</button>
+ <button class="small" onclick="location.href='pflege.html'">Erinnerungen und Aufgaben</button></p>
+ <p><label class="haken"><input type="checkbox" id="autoBox" disabled onchange="autostartSetzen()"><span id="autoText">Mit dem Rechner starten</span></label></p>
+ <p class="hint" id="autoMsg"></p>
+ <p class="hint">Radio: Webseite (öffnet im Browser) oder Stream-Adresse (spielt hier, mit Pause).</p>
+ <p><input id="radioUrl" type="text" placeholder="https://openradioworld.com/" style="width:34vw;font-size:1.2rem"> <input id="radioStream" type="text" placeholder="https://…/stream.mp3" style="width:34vw;font-size:1.2rem"> <button class="small" onclick="radioSpeichern()">Radio speichern</button></p>
+ <p class="hint" id="radioMsg"></p>
+ <p class="hint">Der Modus gilt für den ganzen Pfad. Er stellt auch Zeiten ein.</p>
+ <p class="hint">Der Pfad wird in dieser festen Datei gespeichert:</p><p class="hint" id="pfadDatei"></p></div>
+<div id="v2" class="hide"><h1>Wo willst du hin?</h1><div class="row">
+ <button id="bLink" onclick="showLink()">🔗<br>Link einfügen</button>
+ <button id="bFile" onclick="pickFile(false)">📁<br>Datei wählen</button>
+ <button id="bFn" onclick="showFns()">▣<br>Funktion</button></div>
+ <div id="linkBox" class="hide"><p class="hint">Link hier einfügen (Strg+V):</p><input id="link" placeholder="https://..."><p><button onclick="saveLink()">Speichern</button></p></div>
+ <div id="fileBox" class="hide"><p class="hint" id="fileMsg"></p><p><button class="small" onclick="pickFile(true)">Lieber einen ganzen Ordner</button></p></div>
+ <p><button class="small" onclick="back()">Zurück</button></p></div>
+<div id="v4" class="hide"><h1>Welche Funktion?</h1><div class="row" id="fns"></div>
+ <h2>Nur für Betreuer</h2><p class="hint">Sperren und Ausschalten fragen immer zuerst Ja oder Nein. Nein steht links.</p>
+ <div class="row" id="fnsCare"></div>
+ <p><button class="small" onclick="view('v2')">Zurück</button></p></div>
+<div id="v3" class="hide"><h1>Gespeichert ✓</h1><p class="hint" id="doneMsg"></p><p><button onclick="back()">Weiter</button></p></div>
+<div id="v5" class="hide"><h1>Hilferuf</h1>
+ <div class="warnung"><img src="img/hilfe.svg" alt=""><span class="warnung-text">Der Hilferuf leitet Rufe an ein Handy weiter. Er ersetzt keinen Notruf.</span></div>
+ <p class="hint">Der Name wird nur hier gesagt, wenn jemand den Ruf gesehen hat. Auf dem Handy steht er nicht.</p>
+ <input id="rufName" placeholder="Name, leer heißt Jemand">
+ <p class="hint">Test alle wie viele Tage? 0 ist aus.</p>
+ <input id="rufTage" inputmode="numeric" placeholder="30">
+ <p class="hint">Server, nur https, ohne Pfad</p>
+ <input id="rufServer" placeholder="https://ntfy.sh">
+ <p class="hint">Diesen Link in der ntfy-App abonnieren. Den Antwortkanal sieht man hier nicht.</p>
+ <p class="hint" id="rufAbo"></p>
+ <p><button onclick="rufSpeichern()">Speichern</button>
+ <button onclick="rufTest()">Test jetzt</button>
+ <button onclick="rufNeu()">Neue Zufallskanäle</button></p>
+ <p class="hint" id="rufMsg"></p>
+ <p><button class="small" onclick="view('v1')">Zurück</button></p></div>
+<script>
+let C, cur, catalog = [];
+const $=id=>document.getElementById(id);
+function view(n){['v1','v2','v3','v4','v5'].forEach(v=>$(v).classList.toggle('hide',v!==n))}
+function rufWeg(){$('rufMsg').textContent=T('Der Hilferuf-Dienst läuft nicht. Der Server muss neu gestartet werden.')}
+function rufZeigen(z){
+  if(!z)return;
+  if(z.name!=null)$('rufName').value=z.name;
+  if(z.testTage!=null)$('rufTage').value=String(z.testTage);
+  if(z.server)$('rufServer').value=z.server;
+  if(z.abo!=null)$('rufAbo').textContent=z.abo||T('Noch kein Kanal.');
+  if(z.warnung)document.querySelectorAll('.warnung-text').forEach(el=>{el.textContent=z.warnung});
+}
+async function rufLaden(){
+  try{
+    const r=await fetch('/api/hilferuf',{cache:'no-store'});
+    if(!r.ok)throw new Error('weg');
+    const z=await r.json();
+    if(!z||!z.ok)throw new Error('weg');
+    rufZeigen(z);
+  }catch(e){rufWeg()}
+}
+function oeffneRuf(){view('v5');$('rufMsg').textContent='';rufLaden()}
+function rufFelder(){return {name:$('rufName').value,testTage:$('rufTage').value,server:$('rufServer').value}}
+async function rufAuftrag(daten){
+  const r=await fetch('/api/hilferuf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(daten)});
+  if(!r.ok)throw new Error('weg');
+  return r.json();
+}
+async function rufSpeichern(){
+  try{rufZeigen(await rufAuftrag(Object.assign({art:'speichern'},rufFelder())));$('rufMsg').textContent=T('Gespeichert.')}
+  catch(e){rufWeg()}
+}
+async function rufTest(){
+  $('rufMsg').textContent=T('Test läuft …');
+  try{
+    await rufAuftrag(Object.assign({art:'speichern'},rufFelder()));
+    const z=await rufAuftrag({art:'test'});
+    $('rufMsg').textContent=(z&&z.ok)?T('Der Test ist raus. Das ist kein Hilferuf.'):((z&&z.sagen)||T('Der Test ist nicht rausgegangen.'));
+    rufLaden();
+  }catch(e){rufWeg()}
+}
+async function rufNeu(){
+  if(!confirm(T('Neue Kanäle. Das Handy muss den neuen Link neu abonnieren.')))return;
+  try{
+    rufZeigen(await rufAuftrag({art:'neu'}));
+    $('rufMsg').textContent=T('Neue Kanäle. Den Link auf dem Handy neu abonnieren.');
+  }catch(e){rufWeg()}
+}
+function present(k){
+  const wort=k.wort||k.label||'';
+  const bild=k.bild||k.image||'img/zurueck.svg';
+  const leaf=k.action||(k.aktion&&k.aktion.typ&&k.aktion.typ!=='untermenue'&&k.aktion.typ!=='blaettern');
+  return {wort,bild,leaf};
+}
+function targets(){
+  const out=[];
+  for(const sc of Object.values(C.screens)){
+    if(sc.liste){sc.liste.forEach(k=>{if(present(k).leaf)out.push(k)})}
+    else for(const side of ['left','right']){
+      const k=sc[side]; if(k&&present(k).leaf)out.push(k);
+    }
+  }
+  return out;
+}
+function list(){const r=$('cards');r.innerHTML='';targets().forEach(k=>{const p=present(k);const b=document.createElement('button');
+  b.innerHTML=`<img src="${p.bild}" alt="">${p.wort}`;b.onclick=()=>{cur=k;$('linkBox').classList.add('hide');$('fileBox').classList.add('hide');view('v2')};r.appendChild(b)});view('v1')}
+function back(){list()}
+const SCAN_STUFEN=[3000,2000,1000], ZURUECK_STUFEN=[20,30,40,0];
+function scanText(ms){return ms===3000?T('Markierung: langsam, 3 Sekunden'):ms===2000?T('Markierung: normal, 2 Sekunden'):ms===1000?T('Markierung: schnell, 1 Sekunde'):Tf('Markierung: {} Sekunden',String(ms/1000))}
+function zurueckText(s){return s===0?T('Zurück zum Start: aus'):Tf('Zurück zum Start nach {} Sekunden',String(s))}
+function scanAktuell(){const n=Number(C&&C.knopf&&C.knopf.scanMs);return Number.isFinite(n)&&n>=400&&n<=10000?Math.round(n):2000}
+function zurueckAktuell(){const z=C&&C.zurueck?C.zurueck.sekunden:20;if(z===0||z==='aus'||z==='off')return 0;const n=Number(z);return Number.isFinite(n)&&n>0?Math.min(60,Math.round(n)):20}
+function zeitZeigen(){$('scanBtn').textContent=scanText(scanAktuell());$('zurueckBtn').textContent=zurueckText(zurueckAktuell());
+  $('zeitHinweis').textContent=T('Tempo der Markierung (Ein-Knopf) und Zeit bis zurück zum Start. Ein Klick stellt weiter.')}
+async function zeitSpeichern(){const r=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(C)});
+  if(!r.ok)alert(T('Speichern hat nicht geklappt.'));zeitZeigen()}
+function scanWechseln(){const i=SCAN_STUFEN.indexOf(scanAktuell());
+  if(!C.knopf)C.knopf={modus:'zwei'};C.knopf.scanMs=SCAN_STUFEN[(i+1)%SCAN_STUFEN.length];zeitSpeichern()}
+function zurueckWechseln(){const i=ZURUECK_STUFEN.indexOf(zurueckAktuell());
+  if(!C.zurueck)C.zurueck={};C.zurueck.sekunden=ZURUECK_STUFEN[(i+1)%ZURUECK_STUFEN.length];zeitSpeichern()}
+function stilZeigen(){$('stilBtn').textContent=(C&&C.bildstil==='pixel')?T('Bilder: Pixel'):T('Bilder: glatt')}
+async function bildstilWechseln(){
+  C.bildstil=(C.bildstil==='pixel')?'glatt':'pixel';
+  const r=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(C)});
+  if(r.ok)location.reload();else alert(T('Speichern hat nicht geklappt.'))}
+function showLink(){$('fileBox').classList.add('hide');$('linkBox').classList.remove('hide');$('link').value=(cur.action&&cur.action.url)||(cur.aktion&&cur.aktion.url)||'';$('link').focus()}
+async function save(msg){
+  // Der Pfad gehört dem Modus: Kartenänderungen gehen in die feste Pfad-Datei, der Rest in config.json.
+  const r=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(C)});
+  let ok=r.ok;
+  if(ok&&PFAD){const p=await fetch('/api/pfad',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({start:C.start||'start',plugins:PFAD.plugins===true,screens:C.screens})});ok=p.ok}
+  if(ok){$('doneMsg').textContent=msg;view('v3')}else alert(T('Speichern hat nicht geklappt.'))}
+let PFAD=null;
+function radioZeigen(){const r=(C&&C.radio)||{};$('radioUrl').value=r.url||'';$('radioStream').value=r.stream||''}
+async function radioSpeichern(){
+  const url=$('radioUrl').value.trim(),stream=$('radioStream').value.trim(),web=/^https?:\/\/[^\s]+$/i;
+  if((url&&!web.test(url))||(stream&&!web.test(stream))){$('radioMsg').textContent=T('Bitte eine Adresse mit https:// eingeben.');return}
+  C.radio=Object.assign({},C.radio,{modus:stream?'stream':'browser',url:url,stream:stream});
+  const r=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(C)});
+  $('radioMsg').textContent=r.ok?T('Radio gespeichert.'):T('Speichern hat nicht geklappt.')}
+async function autostartLesen(){
+  try{const r=await fetch('/api/autostart',{cache:'no-store'});const d=r.ok?await r.json():null;
+    if(d&&typeof d.an==='boolean'){$('autoBox').checked=d.an;$('autoBox').disabled=false;autostartZeigen(d.an);return}}catch(e){}
+  $('autoBox').disabled=true;$('autoMsg').textContent=T('Speichern hat nicht geklappt.')}
+function autostartZeigen(an){$('autoText').textContent=T('Mit dem Rechner starten');$('autoMsg').textContent=an?T('Omaclusive startet mit jeder Anmeldung.'):T('Omaclusive startet nicht von allein.')}
+async function autostartSetzen(){
+  const box=$('autoBox'),wunsch=box.checked;box.disabled=true;
+  try{const r=await fetch('/api/autostart',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({an:wunsch})});
+    const d=r.ok?await r.json():null;
+    if(d&&typeof d.an==='boolean'){box.checked=d.an;autostartZeigen(d.an)}else{box.checked=!wunsch;$('autoMsg').textContent=T('Speichern hat nicht geklappt.')}
+  }catch(e){box.checked=!wunsch;$('autoMsg').textContent=T('Speichern hat nicht geklappt.')}
+  box.disabled=false}
+function modusZeigen(){const m=PFAD&&(PFAD.modi||[]).find(x=>x.id===PFAD.modus);$('modusBtn').textContent=Tf('Modus: {}',m?m.name:'');$('pfadDatei').textContent=PFAD?PFAD.datei:''}
+async function modusWechseln(){
+  if(!PFAD)return;const ids=(PFAD.modi||[]).map(m=>m.id);const n=ids[(ids.indexOf(PFAD.modus)+1)%ids.length];
+  const r=await fetch('/api/modus',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({modus:n})});
+  if(r.ok)location.reload();else alert(T('Speichern hat nicht geklappt.'))}
+function saveLink(){let u=$('link').value.trim();if(!u)return;if(!/^https?:\/\//.test(u))u='https://'+u;
+  cur.label=cur.wort||cur.label;cur.image=cur.bild||cur.image;
+  cur.action={type:'url',url:u};cur.aktion={typ:'link',url:u};delete cur.next;delete cur.bestaetigen;
+  save(Tf('{} öffnet jetzt diesen Link.',cur.wort||cur.label))}
+async function pickFile(folder){$('linkBox').classList.add('hide');$('fileBox').classList.remove('hide');$('fileMsg').textContent=T('Das Auswahlfenster ist offen …');
+  const r=await (await fetch('/api/pick?folder='+(folder?1:0))).json();
+  if(!r.path){$('fileMsg').textContent=T('Nichts gewählt. Noch mal versuchen?');return}
+  cur.label=cur.wort||cur.label;cur.image=cur.bild||cur.image;
+  cur.action={type:'file',path:r.path};cur.aktion={typ:'datei',pfad:r.path};delete cur.next;delete cur.bestaetigen;
+  save(Tf('{} öffnet jetzt: {}',cur.wort||cur.label,r.path.split('/').pop()))}
+function showFns(){
+  const fill=(id,items,care)=>{const box=$(id);box.innerHTML='';items.forEach(def=>{const b=document.createElement('button');
+    if(care)b.className='care';b.innerHTML=`<img src="${def.bild}" alt="">${def.wort}`;b.onclick=()=>applyFn(def);box.appendChild(b)})};
+  fill('fns',catalog.filter(x=>!x.betreuer),false);
+  fill('fnsCare',catalog.filter(x=>x.betreuer),true);
+  view('v4');
+}
+function applyFn(def){
+  cur.wort=cur.label=def.wort;cur.bild=cur.image=def.bild;
+  delete cur.action;delete cur.next;
+  if(def.dynamisch){
+    cur.aktion={typ:'dynamisch',quelle:def.dynamisch};
+    delete cur.bestaetigen;
+    save(Tf('{} zeigt jetzt die gefundenen Karten.',def.wort));
+    return;
+  }
+  cur.aktion={typ:'baustein',name:def.name};
+  if(def.betreuer||def.bestaetigen)cur.bestaetigen=true;else delete cur.bestaetigen;
+  save(Tf('{} ist jetzt diese Funktion.',def.wort)+(cur.bestaetigen?' '+T('Vorher kommt die Frage Ja oder Nein.'):''));
+}
+function startLabel(sc){const left=sc&&sc.left;return (left&&(left.wort||left.label))||'';}
+function migrate(c,sys){
+  if(!c||c.version>=2)return c;
+  if(!sys)return c;
+  c.screens=c.screens||{};
+  const label=startLabel(c.screens.start);
+  if((label==='Musik'||label==='Fernsehen')&&!c.screens.sehen)c.screens.sehen=c.screens.start;
+  if(c.screens.geraet&&c.screens.geraet.liste&&!c.screens.ton){c.screens.ton=c.screens.geraet;delete c.screens.geraet;}
+  Object.keys(sys.screens||{}).forEach(k=>{if(!c.screens[k])c.screens[k]=sys.screens[k]});
+  if(!c.screens.start||label==='Musik'||label==='Fernsehen'){if(sys.start)c.screens.start=sys.start}
+  return c;
+}
+function staticT(){I18N.statisch()}
+const params=new URLSearchParams(location.search);
+const langReady=fetch('config.json',{cache:'no-store'}).then(r=>r.json()).then(c=>I18N.laden(params.get('lang')||c.language||'de')).then(staticT).catch(()=>{});
+Promise.all([
+  langReady,
+  fetch('config.json',{cache:'no-store'}).then(r=>r.json()),
+  fetch('systemscreens.json',{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null),
+  fetch('/api/bausteine').then(r=>r.json()).catch(()=>({bausteine:[]})),
+  fetch('/api/pfad',{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null),
+]).then(([_l,c,sys,cat,pf])=>{
+  C=migrate(c,sys);catalog=cat.bausteine||[];
+  if(pf&&pf.ok){PFAD=pf;C.screens=pf.screens;C.start=pf.start;C.modus=pf.modus}
+  list();stilZeigen();zeitZeigen();modusZeigen();radioZeigen();autostartLesen().then(()=>{window.__ready=true});
+});
+</script></body></html>

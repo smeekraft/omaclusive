@@ -1,0 +1,430 @@
+#!/usr/bin/env python3
+"""Lokaler Mini-Server fuer Omaclusive (nur 127.0.0.1, keine Cloud).
+Liefert die App aus. Standardport 8795."""
+import http.server, json, os, re, datetime, subprocess, shutil, urllib.parse, signal, threading
+import hilferuf
+from i18n import tr
+DIR = os.path.dirname(os.path.abspath(__file__)); CFG = os.path.join(DIR, "config.json")
+_cfg_lock = threading.Lock()
+VPROF = os.path.expanduser("~/.local/share/omaclusive/video-profil")
+CHILD = []
+_film = {"proc": None}
+def browser(): return shutil.which("chromium") or shutil.which("google-chrome") or "chromium"
+def launch(kind, target):
+    back()
+    if kind == "url":
+        cmd = [browser(), "--user-data-dir=" + VPROF, "--app=" + target, "--start-fullscreen", "--autoplay-policy=no-user-gesture-required"]
+    elif shutil.which("mpv") and os.path.isfile(target):
+        cmd = ["mpv", "--fs", target]
+    else:
+        cmd = ["xdg-open", target]
+    CHILD.append(subprocess.Popen(cmd, start_new_session=True))
+def back():
+    for c in CHILD:
+        try: os.killpg(c.pid, signal.SIGTERM)
+        except Exception: pass
+    CHILD.clear()
+    subprocess.run(["pkill", "-f", "user-data-dir=" + VPROF])
+def pick(folder):
+    if shutil.which("zenity"):
+        cmd = ["zenity", "--file-selection", "--title=" + tr("Wo willst du hin?")] + (["--directory"] if folder else [])
+    elif shutil.which("kdialog"):
+        cmd = ["kdialog", "--getexistingdirectory" if folder else "--getopenfilename", os.path.expanduser("~")]
+    else:
+        return None
+    r = subprocess.run(cmd, capture_output=True, text=True); return r.stdout.strip() or None
+def _lade_config():
+    try:
+        with open(CFG, encoding="utf-8") as handle:
+            daten = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return daten if isinstance(daten, dict) else {}
+def _schreibe_config(daten):
+    if os.path.exists(CFG): shutil.copy(CFG, CFG + ".bak")
+    hilferuf.schreibe_atomar(CFG, daten)
+def _config_aendern(fn):
+    with _cfg_lock:
+        config = _lade_config()
+        if fn(config): _schreibe_config(config)
+        return config
+def _bewahre_kanaele(neu, alt):
+    if not isinstance(neu, dict): return
+    alt_h = alt.get("hilferuf") if isinstance(alt, dict) and isinstance(alt.get("hilferuf"), dict) else {}
+    if not isinstance(neu.get("hilferuf"), dict):
+        if alt_h: neu["hilferuf"] = dict(alt_h)
+        return
+    neu_h = neu["hilferuf"]
+    kanal, antwort = str(neu_h.get("kanal") or ""), str(neu_h.get("antwort") or "")
+    kanal_alt, antwort_alt = str(alt_h.get("kanal") or ""), str(alt_h.get("antwort") or "")
+    alt_ok = hilferuf.gueltiger_kanal(kanal_alt) and hilferuf.gueltiger_kanal(antwort_alt) and kanal_alt != antwort_alt
+    neu_ok = hilferuf.gueltiger_kanal(kanal) and hilferuf.gueltiger_kanal(antwort) and kanal != antwort
+    if alt_ok and not neu_ok:
+        neu_h["kanal"] = kanal_alt
+        neu_h["antwort"] = antwort_alt
+        if not str(neu_h.get("letzterTest") or "").strip():
+            neu_h["letzterTest"] = str(alt_h.get("letzterTest") or "")
+def _kanaele_sicher():
+    return _config_aendern(lambda config: hilferuf.sicherstellen(config, hilferuf.heute()))
+def _hilferuf_lokal(daten):
+    ergebnis = {}
+    def tun(config):
+        speichern, wert = hilferuf.auftrag(config, daten)
+        if isinstance(wert, dict): ergebnis.update(wert)
+        return speichern
+    _config_aendern(tun)
+    return ergebnis
+def _test_senden(config):
+    ergebnis = hilferuf.sende(config, "test")
+    ergebnis["faellig"] = True
+    if ergebnis.get("ok"):
+        tag = hilferuf.heute().isoformat()
+        def setzen(aktuell):
+            hilferuf.sicherstellen(aktuell, hilferuf.heute())
+            aktuell["hilferuf"]["letzterTest"] = tag
+            return True
+        _config_aendern(setzen)
+    return ergebnis
+def _hilferuf_auftrag(daten):
+    daten = daten if isinstance(daten, dict) else {}
+    art = str(daten.get("art") or "zustand")
+    if art in ("zustand", "speichern", "neu"): return _hilferuf_lokal(daten)
+    config = _kanaele_sicher()
+    if art == "test" and daten.get("nurWennFaellig") and not hilferuf.test_faellig(config.get("hilferuf"), hilferuf.heute()):
+        return {"ok": True, "faellig": False}
+    if art == "test": return _test_senden(config)
+    return hilferuf.sende(config, "ruf")
+def _gesehen(seit):
+    return hilferuf.frage_gesehen(_kanaele_sicher(), seit)
+PORT = int(os.environ.get("PORT", 8795))
+def _lokal_ok(h):
+    """Schreibende Aufrufe nur von der eigenen Oberfläche: Host und (falls gesetzt) Origin müssen 127.0.0.1/localhost sein."""
+    erlaubt = {"127.0.0.1:%d" % PORT, "localhost:%d" % PORT}
+    host = str(h.headers.get("Host") or "").lower()
+    if host not in erlaubt: return False
+    origin = str(h.headers.get("Origin") or "")
+    return not origin or origin.lower() in {"http://" + e for e in erlaubt}
+def _autostart_in_config(an):
+    """Das Feld "autostart" der Config folgt dem Zustand der Datei. Schreibt nur bei Abweichung und nur, wenn es eine Config gibt."""
+    if not os.path.exists(CFG): return
+    def setzen(config):
+        if config.get("autostart") is an: return False
+        config["autostart"] = an
+        return True
+    _config_aendern(setzen)
+def _pfad_antwort():
+    import modi
+    config = _lade_config()
+    w = modi.wirksam(config)
+    lang = modi.sprache(config)
+    v = modi.vorlage(w["modus"], lang)
+    return {"ok": True, "modus": w["modus"], "quelle": w["quelle"], "datei": str(modi.datei(config)),
+            "ordner": modi.ordner_info(), "start": w["start"], "plugins": w["plugins"], "maxEbenen": w["maxEbenen"],
+            "screens": w["screens"], "vorlage": {"start": v["start"], "plugins": v["plugins"], "screens": v["screens"]},
+            "bibliothek": modi.bibliothek(lang), "modi": modi.modus_liste(config), "sprache": lang}
+def _plugin_wurzel():
+    return os.path.join(os.path.expanduser("~"), ".config", "omaclusive", "plugins")
+def _film_starten(name):
+    import praxis
+    if not shutil.which("mpv"):
+        return {"ok": False, "grund": "mpv"}
+    pfad = praxis.datei_im_ordner("filme", str(name or ""))
+    if pfad is None:
+        return {"ok": False, "grund": "datei"}
+    back()
+    befehl = ["mpv", "--fs", "--really-quiet", "--no-terminal", str(pfad)]
+    proc = subprocess.Popen(befehl, start_new_session=True)
+    CHILD.append(proc)
+    _film["proc"] = proc
+    return {"ok": True}
+def _film_stand():
+    proc = _film.get("proc")
+    return {"ok": True, "laeuft": bool(proc) and proc.poll() is None}
+def _ordner_liste(quelle):
+    import praxis
+    if quelle not in ("bilder", "filme"):
+        return None
+    try:
+        praxis.anlegen(quelle)
+        return praxis.karten(quelle)
+    except OSError:
+        return []
+_pflege_lock = threading.Lock()
+def _heim(): return os.path.expanduser("~")
+def _pflege_aendern(fn):
+    """Lädt die Pflege-Daten, ruft fn(daten) auf und speichert, wenn fn True liefert."""
+    import pflege
+    with _pflege_lock:
+        daten = pflege.laden(_heim())
+        ergebnis = fn(daten)
+        if ergebnis: pflege.speichern(_heim(), daten)
+        return daten, ergebnis
+def _sende_bereich(s, pfad):
+    """Film mit Range-Unterstützung (Spulen im Browser). Nur Dateien, die praxis.datei_im_ordner geliefert hat."""
+    typen = {".mp4": "video/mp4", ".webm": "video/webm", ".ogv": "video/ogg", ".mkv": "video/x-matroska", ".mov": "video/quicktime"}
+    groesse = pfad.stat().st_size
+    start, ende, code = 0, groesse - 1, 200
+    m = re.fullmatch(r"bytes=(\d*)-(\d*)", s.headers.get("Range") or "")
+    if m and (m.group(1) or m.group(2)):
+        if m.group(1):
+            start = int(m.group(1))
+            if m.group(2): ende = min(int(m.group(2)), groesse - 1)
+        else:
+            start = max(0, groesse - int(m.group(2)))
+        if start > ende or start >= groesse:
+            s.send_response(416); s.send_header("Content-Range", "bytes */%d" % groesse); s.send_header("Content-Length", "0"); s.end_headers(); return
+        code = 206
+    s.send_response(code)
+    s.send_header("Content-Type", typen.get(pfad.suffix.lower(), "application/octet-stream"))
+    s.send_header("Accept-Ranges", "bytes")
+    s.send_header("Content-Length", str(ende - start + 1))
+    if code == 206: s.send_header("Content-Range", "bytes %d-%d/%d" % (start, ende, groesse))
+    s.send_header("Cache-Control", "no-store")
+    s.end_headers()
+    try:
+        with open(pfad, "rb") as handle:
+            handle.seek(start)
+            rest = ende - start + 1
+            while rest > 0:
+                block = handle.read(min(65536, rest))
+                if not block: break
+                s.wfile.write(block); rest -= len(block)
+    except (BrokenPipeError, ConnectionResetError):
+        pass
+def _sende_datei(s, pfad):
+    typen = {
+        ".svg": "image/svg+xml",
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+        ".gif": "image/gif",
+        ".pdf": "application/pdf",
+    }
+    daten = pfad.read_bytes()
+    s.roh(daten, typen.get(pfad.suffix.lower(), "application/octet-stream"))
+class H(http.server.SimpleHTTPRequestHandler):
+    def __init__(s, *a, **k): super().__init__(*a, directory=DIR, **k)
+    def translate_path(s, path):
+        # Bildsatz: /img/x.svg und /plugins/<id>/x.svg kommen aus dem Ordner glatt/ oder pixel/
+        # (config.json "bildstil", Standard glatt). Fehlt die Datei dort, gilt der alte Pfad.
+        import praxis, re as _re
+        roh = urllib.parse.unquote(urllib.parse.urlparse(path).path)
+        m = _re.fullmatch(r"/(img|plugins/[a-z0-9_-]{1,40})/([A-Za-z0-9_.-]+\.svg)", roh)
+        if m:
+            ziel = praxis.bild_im_stil(os.path.join(DIR, m.group(1)), m.group(2), _lade_config().get("bildstil"))
+            if ziel is not None:
+                return str(ziel)
+        return super().translate_path(path)
+    def end_headers(s):
+        s.send_header("Cache-Control", "no-store")
+        super().end_headers()
+    def j(s, obj, code=200):
+        b = json.dumps(obj, ensure_ascii=False).encode()
+        s.send_response(code); s.send_header("Content-Type", "application/json; charset=utf-8")
+        s.send_header("Content-Length", str(len(b))); s.end_headers(); s.wfile.write(b)
+    def roh(s, daten, typ, code=200):
+        s.send_response(code)
+        s.send_header("Content-Type", typ)
+        s.send_header("Content-Length", str(len(daten)))
+        s.end_headers()
+        s.wfile.write(daten)
+    def body(s):
+        n = int(s.headers.get("Content-Length") or 0)
+        if not n: return {}
+        if n > 1000000: return None
+        try: return json.loads(s.rfile.read(n).decode())
+        except Exception: return None
+    def do_GET(s):
+        u = urllib.parse.urlparse(s.path); q = urllib.parse.parse_qs(u.query)
+        if u.path == "/api/pick": return s.j({"path": pick(q.get("folder", ["0"])[0] == "1")})
+        if u.path == "/api/open":
+            if "url" in q: launch("url", q["url"][0]); return s.j({"ok": True})
+            p = q.get("path", [""])[0]
+            if os.path.exists(p): launch("file", p); return s.j({"ok": True})
+            return s.j({"ok": False}, 404)
+        if u.path == "/api/back": back(); return s.j({"ok": True})
+        if u.path == "/api/hinweis":
+            import bausteine
+            return s.j({"ok": bool(bausteine.hinweis_ton())})
+        if u.path == "/api/bausteine":
+            import bausteine
+            return s.j({"bausteine": bausteine.catalog(), "sprache": bausteine.engine(), "wlan": bausteine.wifi_backend()})
+        if u.path == "/api/liste":
+            import bausteine
+            quelle = q.get("quelle", [""])[0]
+            if quelle not in ("wlan.list", "bt.list"):
+                return s.j({"ok": False, "liste": []}, 404)
+            return s.j({"ok": True, "quelle": quelle, "liste": bausteine.liste(quelle)})
+        if u.path == "/api/hilferuf":
+            return s.j(_hilferuf_lokal({"art": "zustand"}))
+        if u.path == "/api/hilferuf/gesehen":
+            return s.j(_gesehen(q.get("since", ["0"])[0]))
+        if u.path == "/api/ordner":
+            quelle = q.get("quelle", [""])[0]
+            liste = _ordner_liste(quelle)
+            if liste is None:
+                return s.j({"ok": False, "liste": []}, 404)
+            return s.j({"ok": True, "quelle": quelle, "liste": liste})
+        if u.path == "/api/datei":
+            import praxis
+            quelle = q.get("quelle", [""])[0]
+            name = q.get("name", [""])[0]
+            pfad = praxis.datei_im_ordner(quelle, name) if quelle in ("bilder", "filme") else None
+            if pfad is None:
+                return s.j({"ok": False}, 404)
+            return _sende_datei(s, pfad)
+        if u.path == "/api/blatt":
+            import praxis
+            pdf = praxis.blatt_pdf(DIR)
+            return s.roh(pdf, "application/pdf")
+        if u.path == "/api/plugins":
+            import praxis
+            return s.j(praxis.plugins_lesen(_plugin_wurzel()))
+        if u.path == "/api/plugin-bild":
+            import praxis
+            pfad = praxis.plugin_datei(_plugin_wurzel(), q.get("id", [""])[0], q.get("datei", [""])[0], _lade_config().get("bildstil"))
+            if pfad is None:
+                return s.j({"ok": False}, 404)
+            return _sende_datei(s, pfad)
+        if u.path == "/api/autostart":
+            if not _lokal_ok(s): return s.j({"ok": False}, 403)
+            import praxis
+            an = praxis.autostart_aktiv(os.path.expanduser("~"))
+            _autostart_in_config(an)
+            return s.j({"ok": True, "an": an})
+        if u.path == "/api/medium":
+            if not _lokal_ok(s): return s.j({"ok": False}, 403)
+            import praxis
+            pfad = praxis.datei_im_ordner("filme", q.get("name", [""])[0])
+            if pfad is None: return s.j({"ok": False}, 404)
+            return _sende_bereich(s, pfad)
+        if u.path in ("/api/erinnerung", "/api/aufgaben", "/api/pflege"):
+            if not _lokal_ok(s): return s.j({"ok": False}, 403)
+            import pflege
+            with _pflege_lock: daten = pflege.laden(_heim())
+            if u.path == "/api/erinnerung":
+                return s.j({"ok": True, "faellig": pflege.faellig(daten, datetime.datetime.now())[:1]})
+            if u.path == "/api/aufgaben":
+                return s.j({"ok": True, "offen": pflege.offene_aufgaben(daten)})
+            return s.j({"ok": True, "erinnerungen": daten["erinnerungen"], "aufgaben": daten["aufgaben"]})
+        if u.path == "/api/film":
+            return s.j(_film_stand())
+        if u.path == "/api/pfad":
+            return s.j(_pfad_antwort())
+        if u.path == "/api/modi":
+            import modi
+            c = _lade_config()
+            return s.j({"ok": True, "modus": modi.modus_id(c), "modi": modi.modus_liste(c)})
+        return super().do_GET()
+    def do_POST(s):
+        data = s.body()
+        if data is None: return s.j({"ok": False}, 400)
+        pfad = urllib.parse.urlparse(s.path).path
+        if pfad == "/api/hilferuf":
+            if not isinstance(data, dict): return s.j({"ok": False}, 400)
+            return s.j(_hilferuf_auftrag(data))
+        if pfad == "/api/film":
+            if not isinstance(data, dict): return s.j({"ok": False}, 400)
+            return s.j(_film_starten(data.get("name", "")))
+        if pfad == "/api/autostart":
+            if not _lokal_ok(s): return s.j({"ok": False}, 403)
+            if not isinstance(data, dict) or not isinstance(data.get("an"), bool): return s.j({"ok": False}, 400)
+            import praxis
+            an = praxis.autostart_setzen(os.path.expanduser("~"), os.path.join(DIR, "start-talker.sh"), data["an"])
+            _autostart_in_config(an)
+            return s.j({"ok": True, "an": an})
+        if pfad in ("/api/erinnerung/bestaetigen", "/api/aufgaben/abhaken", "/api/pflege"):
+            if not _lokal_ok(s): return s.j({"ok": False}, 403)
+            if not isinstance(data, dict): return s.j({"ok": False}, 400)
+            import pflege
+            if pfad == "/api/pflege":
+                sauber, fehler = pflege.bereinige(data)
+                if fehler: return s.j({"ok": False, "fehler": fehler}, 400)
+                with _pflege_lock:
+                    alt = pflege.laden(_heim())
+                    sauber["bestaetigt"] = {k: v for k, v in alt["bestaetigt"].items() if k in {e["id"] for e in sauber["erinnerungen"]}}
+                    pflege.speichern(_heim(), sauber)
+                return s.j({"ok": True})
+            eid = data.get("id")
+            if not isinstance(eid, str): return s.j({"ok": False}, 400)
+            if pfad == "/api/erinnerung/bestaetigen":
+                _, ok = _pflege_aendern(lambda d: pflege.bestaetigen(d, eid, datetime.datetime.now()))
+            else:
+                _, ok = _pflege_aendern(lambda d: pflege.abhaken(d, eid))
+            return s.j({"ok": bool(ok)}, 200 if ok else 404)
+        if pfad in ("/api/pfad", "/api/pfad/zuruecksetzen", "/api/modus"):
+            if not _lokal_ok(s): return s.j({"ok": False, "fehler": ["nur lokal"]}, 403)
+            if not isinstance(data, dict): return s.j({"ok": False}, 400)
+            import modi
+            if pfad == "/api/modus":
+                ergebnis = {}
+                def setzen(config):
+                    ergebnis["ok"] = modi.modus_setzen(config, str(data.get("modus") or ""))
+                    return ergebnis["ok"]
+                _config_aendern(setzen)
+                return s.j({"ok": bool(ergebnis.get("ok"))}, 200 if ergebnis.get("ok") else 400)
+            if pfad == "/api/pfad/zuruecksetzen":
+                with _cfg_lock: modi.zuruecksetzen(_lade_config())
+                return s.j(_pfad_antwort())
+            with _cfg_lock:
+                ergebnis = modi.schreibe_pfad(_lade_config(), data)
+            if not ergebnis.get("ok"): return s.j(ergebnis, 400)
+            ergebnis.update({k: v for k, v in _pfad_antwort().items() if k in ("quelle", "screens", "start", "plugins")})
+            return s.j(ergebnis)
+        if s.path == "/api/config":
+            if not _lokal_ok(s): return s.j({"ok": False}, 403)
+            if not isinstance(data, dict): return s.j({"ok": False}, 400)
+            with _cfg_lock:
+                _bewahre_kanaele(data, _lade_config())
+                import praxis
+                data["autostart"] = praxis.autostart_aktiv(os.path.expanduser("~"))
+                _schreibe_config(data)
+            return s.j({"ok": True})
+        if s.path == "/api/baustein":
+            import bausteine
+            return s.j(bausteine.execute(data.get("name", ""), bool(data.get("confirm")), data))
+        if s.path == "/api/say":
+            import bausteine
+            texte = data.get("texte")
+            nr = data.get("nr") if isinstance(data.get("nr"), int) and not isinstance(data.get("nr"), bool) else None
+            if isinstance(texte, list):
+                return s.j({"ok": bausteine.speak([str(t) for t in texte], data.get("stimme") or "", nr)})
+            return s.j({"ok": bausteine.speak(data.get("text", ""), data.get("stimme") or "", nr)})
+        if s.path == "/api/hoeren":
+            if _lade_config().get("hoeren") is not True:
+                return s.j({"ok": False, "grund": "aus", "text": ""})
+            import ohr
+            woerter = data.get("woerter") or []
+            if not isinstance(woerter, list):
+                return s.j({"ok": False, "grund": "fehler", "text": ""})
+            return s.j(ohr.hoeren([str(w) for w in woerter[:8]]))
+        return s.j({"ok": False}, 404)
+    def log_message(s, *a): pass
+def _ohr_laden():
+    try:
+        if _lade_config().get("hoeren") is not True:
+            return  # Mikrofon standardmäßig aus: kein Modell laden, nichts aufnehmen
+        import ohr
+        ohr.laden()
+    except Exception:
+        pass
+def _sprache_vorab():
+    try:
+        import bausteine
+        config = {}
+        if os.path.isfile(CFG):
+            with open(CFG, encoding="utf-8") as handle:
+                config = json.load(handle)
+        stimme = config.get("stimme") or "piper"
+        bausteine.sprache_vorab(bausteine.texte_aus_config(config), stimme)
+    except Exception:
+        pass
+
+def _hilferuf_bereit():
+    try: _kanaele_sicher()
+    except Exception: pass
+threading.Thread(target=_ohr_laden, daemon=True).start()
+threading.Thread(target=_sprache_vorab, daemon=True).start()
+threading.Thread(target=_hilferuf_bereit, daemon=True).start()
+http.server.ThreadingHTTPServer(("127.0.0.1", PORT), H).serve_forever()

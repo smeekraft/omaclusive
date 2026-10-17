@@ -1,0 +1,19 @@
+name: Idea
+description: A suggestion for Omaclusive
+title: "[Idea] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like?
+      description: Keep it concrete. No medical terms needed.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why does it help?
+      description: Who benefits, and in which everyday situation?
+    validations:
+      required: false

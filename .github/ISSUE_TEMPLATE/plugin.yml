@@ -1,0 +1,19 @@
+name: New plugin
+description: Propose or share a plugin folder idea
+title: "[Plugin] "
+labels: ["plugin"]
+body:
+  - type: textarea
+    id: cards
+    attributes:
+      label: Which cards?
+      description: List the picture cards and what each one should do.
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Language (de/en), offline only, any special keys.
+    validations:
+      required: false

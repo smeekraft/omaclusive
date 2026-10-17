@@ -1,0 +1,275 @@
+{
+  "version": 2,
+  "language": "en",
+  "modus": "b",
+  "einrichtung": {
+    "fertig": false
+  },
+  "bildstil": "glatt",
+  "anzeige": "beides",
+  "stimme": "piper",
+  "keys": {
+    "links": [
+      "ArrowLeft"
+    ],
+    "rechts": [
+      "ArrowRight"
+    ],
+    "waehlen": [
+      "ArrowUp",
+      " ",
+      "Enter"
+    ]
+  },
+  "knopf": {
+    "modus": "zwei",
+    "scanMs": 3000
+  },
+  "debounceMs": 300,
+  "speak": true,
+  "lang": "en-US",
+  "start": "start",
+  "setupHoldMs": 3000,
+  "zurueck": {
+    "sekunden": 20,
+    "hinweis": "ansage",
+    "hinweisVorherSekunden": 5
+  },
+  "feste": {
+    "zurueck": {
+      "wort": "Back",
+      "bild": "img/zurueck.svg"
+    },
+    "nein": {
+      "wort": "No",
+      "bild": "img/nein.svg"
+    },
+    "ja": {
+      "wort": "Yes",
+      "bild": "img/ja.svg"
+    }
+  },
+  "ziele": {
+    "browser": "",
+    "suche": "",
+    "mail": "",
+    "messenger": "",
+    "videoanruf": "",
+    "musik": "",
+    "videos": "",
+    "text": "",
+    "diktat": ""
+  },
+  "screens": {
+    "start": {
+      "name": "Start",
+      "liste": [
+        {
+          "wort": "I want to say something",
+          "sprechen": "I want to say something",
+          "bild": "img/sagen.svg",
+          "aktion": {
+            "typ": "untermenue",
+            "ziel": "sagen"
+          }
+        },
+        {
+          "wort": "Pictures",
+          "sprechen": "Pictures",
+          "bild": "img/fotos.svg",
+          "aktion": {
+            "typ": "ordner",
+            "quelle": "bilder",
+            "ziel": "bilder"
+          }
+        },
+        {
+          "wort": "Films",
+          "sprechen": "Films",
+          "bild": "img/fernsehen.svg",
+          "aktion": {
+            "typ": "ordner",
+            "quelle": "filme",
+            "ziel": "filme"
+          }
+        },
+        {
+          "wort": "Radio",
+          "sprechen": "Radio",
+          "bild": "img/radio.svg",
+          "aktion": {
+            "typ": "radio"
+          }
+        },
+        {
+          "wort": "Tasks",
+          "sprechen": "Tasks",
+          "bild": "img/aufgabe.svg",
+          "aktion": {
+            "typ": "aufgaben"
+          }
+        },
+        {
+          "wort": "Controls",
+          "sprechen": "Controls",
+          "bild": "img/system.svg",
+          "aktion": {
+            "typ": "untermenue",
+            "ziel": "steuern"
+          }
+        }
+      ]
+    },
+    "sagen": {
+      "name": "I want to say something",
+      "liste": [
+        {
+          "wort": "Call for help",
+          "sprechen": "Call for help",
+          "bild": "img/hilfe.svg",
+          "aktion": {
+            "typ": "hilferuf"
+          }
+        },
+        {
+          "wort": "Bell",
+          "sprechen": "Bell",
+          "bild": "img/ton.svg",
+          "aktion": {
+            "typ": "baustein",
+            "name": "help.local"
+          }
+        },
+        {
+          "wort": "Contact One",
+          "sprechen": "Contact One",
+          "bild": "img/kontakt-1.svg",
+          "aktion": {
+            "typ": "sprechen",
+            "text": "I would like to talk to Contact One."
+          }
+        },
+        {
+          "wort": "Contact Two",
+          "sprechen": "Contact Two",
+          "bild": "img/kontakt-2.svg",
+          "aktion": {
+            "typ": "sprechen",
+            "text": "I would like to talk to Contact Two."
+          }
+        },
+        {
+          "wort": "Contact Three",
+          "sprechen": "Contact Three",
+          "bild": "img/kontakt-3.svg",
+          "aktion": {
+            "typ": "sprechen",
+            "text": "I would like to talk to Contact Three."
+          }
+        }
+      ]
+    },
+    "steuern": {
+      "name": "Controls",
+      "liste": [
+        {
+          "wort": "Volume",
+          "sprechen": "Volume",
+          "bild": "img/ton.svg",
+          "aktion": {
+            "typ": "untermenue",
+            "ziel": "lautstaerke"
+          }
+        },
+        {
+          "wort": "Wi-Fi",
+          "sprechen": "Wi-Fi",
+          "bild": "img/wlan.svg",
+          "aktion": {
+            "typ": "dynamisch",
+            "ziel": "wlan.list",
+            "quelle": "wlan.list"
+          }
+        },
+        {
+          "wort": "Bluetooth",
+          "sprechen": "Bluetooth",
+          "bild": "img/bluetooth.svg",
+          "aktion": {
+            "typ": "dynamisch",
+            "ziel": "bt.list",
+            "quelle": "bt.list"
+          }
+        },
+        {
+          "wort": "Turn off",
+          "sprechen": "Turn off",
+          "bild": "img/aus.svg",
+          "bestaetigen": true,
+          "abbruch": "The computer stays on.",
+          "aktion": {
+            "typ": "baustein",
+            "name": "system.poweroff"
+          }
+        }
+      ]
+    },
+    "lautstaerke": {
+      "name": "Volume",
+      "liste": [
+        {
+          "wort": "Louder",
+          "sprechen": "Louder",
+          "bild": "img/lauter.svg",
+          "aktion": {
+            "typ": "baustein",
+            "name": "volume.up"
+          }
+        },
+        {
+          "wort": "Quieter",
+          "sprechen": "Quieter",
+          "bild": "img/leiser.svg",
+          "aktion": {
+            "typ": "baustein",
+            "name": "volume.down"
+          }
+        },
+        {
+          "wort": "Mute",
+          "sprechen": "Mute",
+          "bild": "img/stumm.svg",
+          "aktion": {
+            "typ": "baustein",
+            "name": "volume.mute"
+          }
+        }
+      ]
+    }
+  },
+  "hilferuf": {
+    "name": "",
+    "server": "https://ntfy.sh",
+    "kanal": "",
+    "antwort": "",
+    "testTage": 30
+  },
+  "autostart": false,
+  "waehlSekunden": 3,
+  "stimmeTempo": 1.15,
+  "hoeren": false,
+  "bildSekunden": 10,
+  "radio": {
+    "modus": "browser",
+    "name": "Radio",
+    "url": "https://openradioworld.com/",
+    "stream": ""
+  },
+  "streaming": {
+    "aktiv": false,
+    "dienste": [],
+    "hinweis": "Placeholder for later updates. No function today."
+  },
+  "erinnerungPruefSekunden": 20,
+  "erinnerungWiederholSekunden": 60
+}

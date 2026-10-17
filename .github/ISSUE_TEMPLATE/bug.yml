@@ -1,0 +1,36 @@
+name: Bug
+description: Something does not work as expected
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: Short description of the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: What you did before it went wrong.
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: System
+      description: e.g. Omarchy / Arch, browser or window mode
+    validations:
+      required: false
+  - type: checkboxes
+    id: offline
+    attributes:
+      label: Offline check
+      options:
+        - label: It still fails with no network

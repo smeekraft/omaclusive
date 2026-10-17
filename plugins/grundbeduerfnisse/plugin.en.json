@@ -1,0 +1,70 @@
+{
+  "name": "Basic needs",
+  "sprechen": "Basic needs",
+  "bild": "grund.svg",
+  "karten": [
+    {
+      "wort": "Thirst",
+      "sprechen": "Thirst",
+      "bild": "durst.svg",
+      "aktion": {
+        "typ": "sprechen",
+        "text": "I am thirsty."
+      }
+    },
+    {
+      "wort": "Hunger",
+      "sprechen": "Hunger",
+      "bild": "hunger.svg",
+      "aktion": {
+        "typ": "sprechen",
+        "text": "I am hungry."
+      }
+    },
+    {
+      "wort": "Toilet",
+      "sprechen": "Toilet",
+      "bild": "toilette.svg",
+      "aktion": {
+        "typ": "sprechen",
+        "text": "I need to use the toilet."
+      }
+    },
+    {
+      "wort": "Pain",
+      "sprechen": "Pain",
+      "bild": "schmerz.svg",
+      "aktion": {
+        "typ": "sprechen",
+        "text": "I am in pain."
+      }
+    },
+    {
+      "wort": "Pause",
+      "sprechen": "Pause",
+      "bild": "pause.svg",
+      "aktion": {
+        "typ": "sprechen",
+        "text": "I need a break."
+      }
+    },
+    {
+      "wort": "Cold",
+      "sprechen": "Cold",
+      "bild": "kalt.svg",
+      "aktion": {
+        "typ": "sprechen",
+        "text": "I am cold."
+      }
+    },
+    {
+      "wort": "Warm",
+      "sprechen": "Warm",
+      "bild": "warm.svg",
+      "aktion": {
+        "typ": "sprechen",
+        "text": "I am warm."
+      }
+    }
+  ]
+}

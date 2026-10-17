@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+config.json
+config.json.bak
+*.log
+piper/
+voices/*.onnx
+voices/*.onnx.json
+ohr/model/
+ohr/libvosk.so
+ohr/model-en/

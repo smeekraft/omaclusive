@@ -1,0 +1,70 @@
+{
+  "name": "Grundbedürfnisse",
+  "sprechen": "Grundbedürfnisse",
+  "bild": "grund.svg",
+  "karten": [
+    {
+      "wort": "Durst",
+      "sprechen": "Durst",
+      "bild": "durst.svg",
+      "aktion": {
+        "typ": "sprechen",
+        "text": "Ich habe Durst."
+      }
+    },
+    {
+      "wort": "Hunger",
+      "sprechen": "Hunger",
+      "bild": "hunger.svg",
+      "aktion": {
+        "typ": "sprechen",
+        "text": "Ich habe Hunger."
+      }
+    },
+    {
+      "wort": "Toilette",
+      "sprechen": "Toilette",
+      "bild": "toilette.svg",
+      "aktion": {
+        "typ": "sprechen",
+        "text": "Ich muss zur Toilette."
+      }
+    },
+    {
+      "wort": "Schmerz",
+      "sprechen": "Schmerz",
+      "bild": "schmerz.svg",
+      "aktion": {
+        "typ": "sprechen",
+        "text": "Ich habe Schmerzen."
+      }
+    },
+    {
+      "wort": "Pause",
+      "sprechen": "Pause",
+      "bild": "pause.svg",
+      "aktion": {
+        "typ": "sprechen",
+        "text": "Ich brauche eine Pause."
+      }
+    },
+    {
+      "wort": "Kalt",
+      "sprechen": "Kalt",
+      "bild": "kalt.svg",
+      "aktion": {
+        "typ": "sprechen",
+        "text": "Mir ist kalt."
+      }
+    },
+    {
+      "wort": "Warm",
+      "sprechen": "Warm",
+      "bild": "warm.svg",
+      "aktion": {
+        "typ": "sprechen",
+        "text": "Mir ist warm."
+      }
+    }
+  ]
+}

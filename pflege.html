@@ -1,0 +1,97 @@
+<!doctype html><html lang="de" translate="no" class="notranslate"><head><meta charset="utf-8"><meta name="google" content="notranslate">
+<meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" href="data:,"><title>Erinnerungen und Aufgaben</title>
+<script src="sprache.js"></script>
+<style>
+body{margin:0;background:#111;color:#fff;font-family:sans-serif}
+header{padding:2vh 2vw;background:#1b1b1b;border-bottom:3px solid #444}
+h1{margin:0 0 .5rem;font-size:2rem}h2{font-size:1.4rem;margin:1.2rem 0 .5rem}
+main{padding:1vh 2vw 4vh;max-width:60rem}
+button,select,input{font:inherit;color:#fff}
+button{background:#222;border:3px solid #fff;border-radius:12px;padding:.5rem 1rem;cursor:pointer;font-weight:700}
+button.klein{padding:.25rem .6rem;border-width:2px;border-radius:8px;font-size:1rem}
+button.primaer{background:#0c2340;border-color:#ffd400}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:4px solid #ffd400;outline-offset:2px}
+input[type=text],input[type=time],input[type=date],select{background:#222;border:2px solid #888;border-radius:8px;padding:.35rem .5rem;font-size:1.1rem}
+input[type=text]{min-width:16rem;flex:1}
+.zeile{display:flex;align-items:center;gap:.6rem;border:2px solid #666;border-radius:10px;padding:.4rem .6rem;margin:.4rem 0;background:#222;flex-wrap:wrap}
+.zeile.aus{opacity:.55;border-style:dashed}
+.zeile .info{flex:1;min-width:10rem;font-weight:800}
+.hint{opacity:.85;margin:.3rem 0}
+#status{font-weight:800;min-height:1.4em}#status.fehler{color:#ff8a80}#status.ok{color:#9be37f}
+.tage label{margin-right:.5rem;white-space:nowrap}
+</style></head><body>
+<header><h1>Erinnerungen und Aufgaben</h1>
+<p class="hint">Erinnerungen werden zur Uhrzeit angezeigt und vorgelesen. Bestätigt wird mit einer Kachel. Aufgaben werden auf der Kachel „Aufgaben“ abgehakt.</p>
+<p><button onclick="location.href='setup.html'">Zurück</button> <button class="primaer" onclick="speichern()">Speichern</button></p>
+<p id="status" role="status"></p></header>
+<main>
+<h2>Erinnerungen</h2>
+<div id="erinnerungen"></div>
+<div class="zeile" id="neuE">
+ <input type="time" id="eZeit" value="08:00" aria-label="Uhrzeit">
+ <input type="text" id="eText" maxlength="120" placeholder="Text, zum Beispiel: Tabletten nehmen">
+ <select id="eWdh"><option value="taeglich">jeden Tag</option><option value="werktags">Montag bis Freitag</option><option value="wochenende">Samstag und Sonntag</option><option value="tage">bestimmte Tage</option><option value="einmal">einmal</option></select>
+ <input type="date" id="eDatum" class="hide" aria-label="Datum" style="display:none">
+ <span class="tage" id="eTage" style="display:none"></span>
+ <button class="klein" onclick="erinnerungNeu()">Hinzufügen</button>
+</div>
+<h2>Aufgaben</h2>
+<div id="aufgaben"></div>
+<div class="zeile"><input type="text" id="aText" maxlength="120" placeholder="Aufgabe, zum Beispiel: Fenster schließen"><button class="klein" onclick="aufgabeNeu()">Hinzufügen</button></div>
+<p class="hint">Gespeichert wird in <code>~/.config/omaclusive/pflege.json</code>.</p>
+</main>
+<script>
+"use strict";
+const $=id=>document.getElementById(id);
+const TAGE=["Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag","Sonntag"];
+let D={erinnerungen:[],aufgaben:[]};
+function status(t,art){const s=$('status');s.textContent=t||'';s.className=art||''}
+function wdhText(e){
+  if(e.wiederholen==='taeglich')return T('jeden Tag');
+  if(e.wiederholen==='werktags')return T('Montag bis Freitag');
+  if(e.wiederholen==='wochenende')return T('Samstag und Sonntag');
+  if(e.wiederholen==='einmal')return Tf('einmal am {}',e.datum);
+  return (e.tage||[]).map(t=>T(TAGE[t]).slice(0,2)).join(', ')}
+function zeichne(){
+  const E=$('erinnerungen');E.textContent='';
+  if(!D.erinnerungen.length){const p=document.createElement('p');p.className='hint';p.textContent=T('Noch keine Erinnerung.');E.appendChild(p)}
+  D.erinnerungen.forEach((e,i)=>{
+    const z=document.createElement('div');z.className='zeile'+(e.aktiv===false?' aus':'');
+    const info=document.createElement('span');info.className='info';info.textContent=e.zeit+'  '+e.text+'  ('+wdhText(e)+')';
+    const a=document.createElement('button');a.className='klein';a.textContent=e.aktiv===false?T('Einschalten'):T('Ausschalten');a.onclick=()=>{e.aktiv=e.aktiv===false;zeichne()};
+    const l=document.createElement('button');l.className='klein';l.textContent=T('Löschen');l.onclick=()=>{D.erinnerungen.splice(i,1);zeichne()};
+    z.append(info,a,l);E.appendChild(z)});
+  const A=$('aufgaben');A.textContent='';
+  if(!D.aufgaben.length){const p=document.createElement('p');p.className='hint';p.textContent=T('Noch keine Aufgabe.');A.appendChild(p)}
+  D.aufgaben.forEach((x,i)=>{
+    const z=document.createElement('div');z.className='zeile'+(x.erledigt?' aus':'');
+    const info=document.createElement('span');info.className='info';info.textContent=(x.erledigt?'✓ ':'')+x.text;
+    const h=document.createElement('button');h.className='klein';h.textContent=x.erledigt?T('Wieder offen'):T('Abhaken');h.onclick=()=>{x.erledigt=!x.erledigt;zeichne()};
+    const l=document.createElement('button');l.className='klein';l.textContent=T('Löschen');l.onclick=()=>{D.aufgaben.splice(i,1);zeichne()};
+    z.append(info,h,l);A.appendChild(z)})}
+function wdhWechsel(){
+  const w=$('eWdh').value;$('eDatum').style.display=w==='einmal'?'':'none';$('eTage').style.display=w==='tage'?'':'none';
+  if(w==='einmal'&&!$('eDatum').value)$('eDatum').value=new Date().toISOString().slice(0,10)}
+function erinnerungNeu(){
+  const zeit=$('eZeit').value,text=$('eText').value.trim(),w=$('eWdh').value;
+  if(!zeit||!text){status(T('Bitte Uhrzeit und Text eingeben.'),'fehler');return}
+  const e={zeit,text,wiederholen:w,aktiv:true,tage:[],datum:''};
+  if(w==='einmal'){e.datum=$('eDatum').value;if(!e.datum){status(T('Bitte ein Datum wählen.'),'fehler');return}}
+  if(w==='tage'){e.tage=[...document.querySelectorAll('#eTage input:checked')].map(x=>Number(x.value));if(!e.tage.length){status(T('Bitte mindestens einen Tag wählen.'),'fehler');return}}
+  D.erinnerungen.push(e);$('eText').value='';status('');zeichne()}
+function aufgabeNeu(){
+  const t=$('aText').value.trim();if(!t){status(T('Bitte einen Text eingeben.'),'fehler');return}
+  D.aufgaben.push({text:t,erledigt:false});$('aText').value='';status('');zeichne()}
+async function speichern(){
+  try{const r=await fetch('/api/pflege',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(D)});
+    if(r.ok){status(T('Gespeichert.'),'ok');await laden()}else{const d=await r.json().catch(()=>null);status((d&&d.fehler&&d.fehler[0])||T('Speichern hat nicht geklappt.'),'fehler')}
+  }catch(e){status(T('Speichern hat nicht geklappt.'),'fehler')}}
+async function laden(){
+  const r=await fetch('/api/pflege',{cache:'no-store'});const d=r.ok?await r.json():null;
+  if(d&&d.ok){D={erinnerungen:d.erinnerungen||[],aufgaben:d.aufgaben||[]};zeichne()}else status(T('Speichern hat nicht geklappt.'),'fehler')}
+const params=new URLSearchParams(location.search);
+fetch('config.json',{cache:'no-store'}).then(r=>r.json()).then(c=>I18N.laden(params.get('lang')||c.language||'de')).then(()=>{
+  const t=$('eTage');TAGE.forEach((n,i)=>{const l=document.createElement('label');const c=document.createElement('input');c.type='checkbox';c.value=i;l.append(c,' '+T(n));t.appendChild(l)});
+  I18N.statisch();$('eWdh').onchange=wdhWechsel;$('eText').placeholder=T($('eText').placeholder);$('aText').placeholder=T($('aText').placeholder);
+}).catch(()=>{}).then(laden).then(()=>{window.__ready=true});
+</script></body></html>

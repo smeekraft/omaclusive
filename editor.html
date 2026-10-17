@@ -1,0 +1,256 @@
+<!doctype html><html lang="de" translate="no" class="notranslate"><head><meta charset="utf-8"><meta name="google" content="notranslate">
+<meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" href="data:,"><title>Pfad bearbeiten</title>
+<script src="sprache.js"></script><script src="pfad.js"></script>
+<style>
+body{margin:0;background:#111;color:#fff;font-family:sans-serif}
+header{padding:2vh 2vw;background:#1b1b1b;border-bottom:3px solid #444}
+h1{margin:0 0 .5rem;font-size:2rem}
+button,select,input{font:inherit;color:#fff}
+button{background:#222;border:3px solid #fff;border-radius:12px;padding:.5rem 1rem;cursor:pointer;font-weight:700}
+button.klein{padding:.25rem .6rem;border-width:2px;border-radius:8px;font-size:1rem}
+button:focus-visible,select:focus-visible,input:focus-visible,.zeile:focus-visible{outline:4px solid #ffd400;outline-offset:2px}
+button.primaer{background:#0c2340;border-color:#ffd400}
+input[type=text]{background:#222;border:2px solid #888;border-radius:8px;padding:.3rem .5rem}
+select{background:#222;border:2px solid #888;border-radius:8px;padding:.3rem}
+.hint{opacity:.85;margin:.3rem 0;font-size:1.05rem}
+#status{font-weight:800;min-height:1.4em}
+#status.fehler{color:#ff8a80}#status.ok{color:#9be37f}
+main{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:2vw;padding:2vh 2vw}
+@media(max-width:1000px){main{grid-template-columns:1fr}}
+.ebene{border:3px solid #555;border-radius:12px;margin:0 0 1.2rem;padding:.6rem .8rem;background:#181818}
+.ebene.ziel{border-color:#ffd400;background:#262200}
+.ebene h2{margin:0 0 .5rem;font-size:1.3rem;display:flex;gap:.6rem;align-items:center;flex-wrap:wrap}
+.zeile{display:flex;align-items:center;gap:.5rem;border:2px solid #666;border-radius:10px;padding:.35rem .5rem;margin:.35rem 0;background:#222;flex-wrap:wrap}
+.zeile.aus{opacity:.5;border-style:dashed}
+.zeile.zieht{opacity:.4}
+.zeile img{width:44px;height:44px;object-fit:contain;background:#000;border-radius:6px}
+.griff{cursor:grab;font-size:1.6rem;touch-action:none;user-select:none;padding:0 .4rem}
+.wort{font-weight:800;flex:1;min-width:8rem}
+.tag{font-size:.9rem;opacity:.8;border:1px solid #777;border-radius:6px;padding:0 .4rem}
+.einfuegen{height:10px;background:#ffd400;border-radius:5px;margin:2px 0}
+.leer{opacity:.7;padding:.6rem;border:2px dashed #666;border-radius:10px}
+#ghost{position:fixed;pointer-events:none;z-index:9;background:#0c2340;border:3px solid #ffd400;border-radius:10px;padding:.4rem .8rem;font-weight:800;display:none}
+#vorschau .paar{display:grid;grid-template-columns:1fr 1fr;gap:1vh;margin:.6rem 0}
+#vorschau .kachel{border:6px solid #f7f4ea;background:#141414;min-height:20vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.5rem;padding:.4rem;text-align:center;font-weight:900;font-size:1.5rem}
+#vorschau .kachel img{max-width:70%;max-height:12vh}
+.palette{display:flex;flex-wrap:wrap;gap:.5rem;margin:.5rem 0}
+.palette button{display:flex;align-items:center;gap:.4rem;font-size:1rem}
+.palette img{width:32px;height:32px}
+.box{border:3px solid #555;border-radius:12px;padding:.6rem .8rem;margin-bottom:1rem;background:#181818}
+code{background:#000;padding:.1rem .3rem;border-radius:4px;word-break:break-all}
+</style></head><body>
+<header>
+ <h1>Pfad bearbeiten</h1>
+ <p class="hint" id="modusInfo"></p>
+ <p class="hint">Gespeichert wird in diese feste Datei:</p><p class="hint"><code id="datei">…</code></p>
+ <p>
+  <button class="primaer" id="speichern" onclick="speichern()">Speichern</button>
+  <button id="reset" onclick="zuruecksetzen()">Zurücksetzen auf die Vorlage</button>
+  <button onclick="location.href='setup.html'">Zurück zu den Einstellungen</button>
+  <button onclick="location.href='index.html'">Zur App</button>
+ </p>
+ <p id="status" role="status" aria-live="polite"></p>
+</header>
+<main>
+ <section>
+  <p class="hint">So ziehst du eine Karte: am Griff ☰ anfassen und auf eine andere Stelle oder in eine andere Ebene loslassen. Ohne Maus: die Tasten ▲ ▼ und das Auswahlfeld „Ebene“. Mit 👁 blendest du eine Karte aus oder ein.</p>
+  <div id="baum"></div>
+ </section>
+ <aside>
+  <div class="box" id="vorschau"><h2>Vorschau mit zwei Kacheln</h2><p class="hint" id="vEbene"></p><div class="paar"><div class="kachel" id="vL"></div><div class="kachel" id="vR"></div></div>
+   <button class="klein" onclick="vorschauWeiter()">Weiter (Andere)</button></div>
+  <div class="box"><h2>Karte hinzufügen</h2>
+   <p class="hint">Zur Ebene: <select id="zielEbene" onchange="zielWahl=this.value;zeichne()"></select></p>
+   <div class="palette" id="palette"></div>
+   <p class="hint">Neue Ebene (ein Menü mit eigenen Karten):</p>
+   <p><input type="text" id="neuName" maxlength="40" placeholder="Name der Ebene"> <button class="klein" onclick="neueEbene()">Ebene anlegen</button></p>
+  </div>
+  <div class="box"><h2>Bilder und Filme</h2>
+   <p class="hint">Die Karten „Bilder“ und „Filme“ zeigen diese Ordner. Lege dort Dateien hinein, dann erscheinen sie. Du kannst die Karten in jede Ebene ziehen.</p>
+   <p class="hint">Bilder: <code id="ordBilder"></code></p><p class="hint">Filme: <code id="ordFilme"></code></p>
+   <p class="hint"><label><input type="checkbox" id="plugins" onchange="modell.plugins=this.checked;geaendert()"> <span>Zusatzpaket „Grundbedürfnisse“ am Start zeigen</span></label></p>
+  </div>
+ </aside>
+</main>
+<div id="ghost"></div>
+<script>
+"use strict";
+const $=id=>document.getElementById(id);
+let modell=null, vorlageDaten=null, bibliothek=[], meta=null, zielWahl="start", vorschauEbene="start", vorschauIndex=0, dirty=false;
+const AKTION_TAG={untermenue:"Menü",ordner:"Ordner",hilferuf:"Hilferuf",baustein:"Funktion",sprechen:"Sagt etwas",dynamisch:"Liste",link:"Link",datei:"Datei"};
+function status(text,art){const s=$("status");s.textContent=text||"";s.className=art||""}
+function geaendert(){dirty=true;status(T("Noch nicht gespeichert."));}
+function reihenfolge(){
+  const ids=[],tief={};
+  const geh=(id,d)=>{if(!modell.screens[id]||(tief[id]!==undefined&&tief[id]>=d))return;if(tief[id]===undefined)ids.push(id);tief[id]=d;
+    modell.screens[id].liste.forEach(k=>{if(k.aktion&&k.aktion.typ==="untermenue")geh(k.aktion.ziel,d+1)})};
+  geh(modell.start,0);
+  Object.keys(modell.screens).forEach(id=>{if(ids.indexOf(id)<0){ids.push(id);tief[id]=0}});
+  return {ids,tief};
+}
+function zeichne(){
+  const {ids,tief}=reihenfolge();
+  const baum=$("baum");baum.innerHTML="";
+  const sel=$("zielEbene");sel.innerHTML="";
+  ids.forEach(id=>{
+    const o=document.createElement("option");o.value=id;o.textContent=modell.screens[id].name;if(id===zielWahl)o.selected=true;sel.appendChild(o);
+    const s=modell.screens[id];
+    const box=document.createElement("div");box.className="ebene"+(id===zielWahl?" ziel":"");box.dataset.ebene=id;box.style.marginLeft=(Math.min(tief[id],3)*2)+"vw";
+    const h=document.createElement("h2");
+    const name=document.createElement("input");name.type="text";name.value=s.name;name.maxLength=60;name.setAttribute("aria-label",T("Name der Ebene"));
+    name.onchange=()=>{s.name=name.value.trim()||s.name;geaendert();zeichne()};
+    const waehl=document.createElement("button");waehl.className="klein";waehl.textContent=T("Hier einfügen");waehl.onclick=()=>{zielWahl=id;vorschauEbene=id;vorschauIndex=0;zeichne()};
+    const vor=document.createElement("button");vor.className="klein";vor.textContent=T("Vorschau");vor.onclick=()=>{vorschauEbene=id;vorschauIndex=0;vorschau()};
+    h.appendChild(name);h.appendChild(waehl);h.appendChild(vor);
+    if(id===modell.start){const t=document.createElement("span");t.className="tag";t.textContent=T("Start");h.appendChild(t)}
+    box.appendChild(h);
+    if(!s.liste.length){const l=document.createElement("div");l.className="leer";l.textContent=T("Noch leer. Karte hierher ziehen oder rechts hinzufügen.");box.appendChild(l)}
+    s.liste.forEach((k,i)=>box.appendChild(zeile(id,i,k,ids)));
+    baum.appendChild(box);
+  });
+  $("plugins").checked=!!modell.plugins;
+  vorschau();
+}
+function zeile(id,i,k,ids){
+  const z=document.createElement("div");z.className="zeile"+(k.aus?" aus":"");z.dataset.ebene=id;z.dataset.index=i;z.tabIndex=0;
+  const g=document.createElement("span");g.className="griff";g.textContent="☰";g.title=T("Ziehen");g.setAttribute("aria-hidden","true");g.addEventListener("pointerdown",e=>ziehStart(e,id,i,k));
+  const img=document.createElement("img");img.alt="";img.src=k.bild;
+  const w=document.createElement("span");w.className="wort";w.textContent=k.wort;
+  const tag=document.createElement("span");tag.className="tag";tag.textContent=T(AKTION_TAG[k.aktion.typ]||k.aktion.typ);
+  z.appendChild(g);z.appendChild(img);z.appendChild(w);z.appendChild(tag);
+  const b=(text,label,fn,dis)=>{const x=document.createElement("button");x.className="klein";x.textContent=text;x.setAttribute("aria-label",label);x.title=label;x.disabled=!!dis;x.onclick=fn;z.appendChild(x)};
+  b("▲",T("Nach oben"),()=>bewege(id,i,id,i-1),i===0);
+  b("▼",T("Nach unten"),()=>bewege(id,i,id,i+2),i===modell.screens[id].liste.length-1);
+  b(k.aus?"👁‍🗨":"👁",k.aus?T("Einblenden"):T("Ausblenden"),()=>{k.aus=!k.aus;if(!k.aus)delete k.aus;geaendert();zeichne()});
+  const sel=document.createElement("select");sel.setAttribute("aria-label",T("Ebene"));
+  ids.forEach(e=>{const o=document.createElement("option");o.value=e;o.textContent=modell.screens[e].name;if(e===id)o.selected=true;sel.appendChild(o)});
+  sel.onchange=()=>bewege(id,i,sel.value,modell.screens[sel.value].liste.length);
+  z.appendChild(sel);
+  b("✕",T("Entfernen"),()=>entferne(id,i),false);
+  z.addEventListener("keydown",e=>{
+    if(e.target!==z)return;
+    if(e.altKey&&e.key==="ArrowUp"){e.preventDefault();bewege(id,i,id,i-1)}
+    else if(e.altKey&&e.key==="ArrowDown"){e.preventDefault();bewege(id,i,id,i+2)}
+    else if(e.key==="ArrowUp"||e.key==="ArrowDown"){const alle=[...document.querySelectorAll(".zeile")];const n=alle.indexOf(z)+(e.key==="ArrowUp"?-1:1);if(alle[n]){e.preventDefault();alle[n].focus()}}
+  });
+  return z;
+}
+// Karte verschieben: von (ebene, index) vor die Stelle "nach" in der Zielebene (Einfügeposition 0..n).
+function bewege(von,i,nach,pos){
+  const quelle=modell.screens[von].liste,ziel=modell.screens[nach].liste;
+  if(i<0||i>=quelle.length||pos<0)return;
+  const karte=quelle.splice(i,1)[0];
+  if(von===nach&&pos>i)pos-=1;
+  ziel.splice(Math.min(pos,ziel.length),0,karte);
+  geaendert();zeichne();
+  const f=document.querySelector('.zeile[data-ebene="'+nach+'"][data-index="'+Math.min(pos,ziel.length-1)+'"]');if(f)f.focus();
+}
+function entferne(id,i){
+  const k=modell.screens[id].liste[i];
+  if(k.aktion.typ==="untermenue"&&!confirm(T("Die Ebene hinter dieser Karte geht mit verloren. Entfernen?")))return;
+  modell.screens[id].liste.splice(i,1);geaendert();zeichne();
+}
+function neueId(name){
+  let basis=name.toLowerCase().replace(/ä/g,"ae").replace(/ö/g,"oe").replace(/ü/g,"ue").replace(/ß/g,"ss").replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,30)||"ebene";
+  let id=basis,n=2;while(modell.screens[id]){id=basis+"-"+n++}return id;
+}
+function neueEbene(){
+  const name=$("neuName").value.trim();if(!name){status(T("Bitte einen Namen eingeben."),"fehler");return}
+  const id=neueId(name);
+  modell.screens[id]={name:name,liste:[]};
+  const ziel=modell.screens[zielWahl]||modell.screens[modell.start];
+  ziel.liste.push({wort:name,sprechen:name,bild:"img/mehr.svg",aktion:{typ:"untermenue",ziel:id}});
+  $("neuName").value="";geaendert();zeichne();
+}
+function hinzufuegen(karte){
+  const ziel=modell.screens[zielWahl]||modell.screens[modell.start];
+  ziel.liste.push(JSON.parse(JSON.stringify(karte)));geaendert();zeichne();
+}
+function palette(){
+  const p=$("palette");p.innerHTML="";
+  bibliothek.forEach(k=>{const b=document.createElement("button");b.innerHTML="";const i=document.createElement("img");i.alt="";i.src=k.bild;b.appendChild(i);b.appendChild(document.createTextNode(k.wort));b.onclick=()=>hinzufuegen(k);p.appendChild(b)});
+}
+// Ziehen mit der Maus oder dem Finger (Zeigerereignisse). Loslassen auf einer Karte fügt davor oder danach ein, auf einer Ebene hängt an.
+let zieht=null;
+function ziehStart(e,id,i,k){
+  e.preventDefault();
+  zieht={id,i};
+  const g=$("ghost");g.textContent=k.wort;g.style.display="block";ghostPos(e);
+  const zeilen=[...document.querySelectorAll('.zeile[data-ebene="'+id+'"]')];if(zeilen[i])zeilen[i].classList.add("zieht");
+  addEventListener("pointermove",ziehBewegt);addEventListener("pointerup",ziehEnde,{once:true});addEventListener("pointercancel",ziehAbbruch,{once:true});
+}
+function ghostPos(e){const g=$("ghost");g.style.left=(e.clientX+12)+"px";g.style.top=(e.clientY+12)+"px"}
+function ziehZiel(e){
+  const el=document.elementFromPoint(e.clientX,e.clientY);if(!el)return null;
+  const z=el.closest(".zeile");
+  if(z){const r=z.getBoundingClientRect();const idx=Number(z.dataset.index);return {ebene:z.dataset.ebene,pos:e.clientY<r.top+r.height/2?idx:idx+1,zeile:z,oben:e.clientY<r.top+r.height/2}}
+  const b=el.closest(".ebene");
+  if(b)return {ebene:b.dataset.ebene,pos:modell.screens[b.dataset.ebene].liste.length,box:b};
+  return null;
+}
+function ziehBewegt(e){
+  ghostPos(e);
+  document.querySelectorAll(".einfuegen").forEach(x=>x.remove());
+  const t=ziehZiel(e);if(!t)return;
+  const m=document.createElement("div");m.className="einfuegen";
+  if(t.zeile)t.zeile.parentNode.insertBefore(m,t.oben?t.zeile:t.zeile.nextSibling);else t.box.appendChild(m);
+}
+function ziehAbbruch(){ziehFertig()}
+function ziehEnde(e){
+  removeEventListener("pointermove",ziehBewegt);
+  const t=ziehZiel(e),z=zieht;ziehFertig();
+  if(t&&z)bewege(z.id,z.i,t.ebene,t.pos);
+}
+function ziehFertig(){
+  removeEventListener("pointermove",ziehBewegt);
+  $("ghost").style.display="none";zieht=null;
+  document.querySelectorAll(".einfuegen").forEach(x=>x.remove());
+  document.querySelectorAll(".zieht").forEach(x=>x.classList.remove("zieht"));
+}
+function kachelFuellen(el,k){el.innerHTML="";if(!k)return;const i=document.createElement("img");i.alt="";i.src=k.bild;el.appendChild(i);el.appendChild(document.createTextNode(k.wort))}
+function vorschau(){
+  const s=modell.screens[vorschauEbene]||modell.screens[modell.start];
+  const karten=Pfad.karten(s);
+  $("vEbene").textContent=s.name;
+  const p=Pfad.duoPaar(karten,vorschauIndex,s!==modell.screens[modell.start]);
+  vorschauIndex=p.index;
+  kachelFuellen($("vL"),p.links);kachelFuellen($("vR"),p.rechts);
+}
+function vorschauWeiter(){vorschauIndex+=1;vorschau()}
+function anwenden(a){
+  modell={start:a.start,plugins:a.plugins===true,screens:a.screens};
+  vorlageDaten=a.vorlage;bibliothek=a.bibliothek||[];meta=a;
+  $("datei").textContent=a.datei;
+  $("ordBilder").textContent=a.ordner.bilder;$("ordFilme").textContent=a.ordner.filme;
+  const m=(a.modi||[]).find(x=>x.id===a.modus);
+  $("modusInfo").textContent=Tf("Modus: {}. {}",m?m.name:a.modus,a.quelle==="datei"?T("Dies ist dein eigener Pfad."):T("Noch nichts geändert: es gilt die Vorlage des Modus."));
+  if(!modell.screens[zielWahl])zielWahl=modell.start;
+  vorschauEbene=modell.start;vorschauIndex=0;dirty=false;
+  palette();zeichne();
+}
+async function laden(){
+  try{const r=await fetch("/api/pfad",{cache:"no-store"});const a=await r.json();if(!a||!a.ok)throw new Error("x");anwenden(a);status("")}
+  catch(e){status(T("Der Pfad konnte nicht geladen werden. Läuft der Server?"),"fehler")}
+}
+async function speichern(){
+  status(T("Speichert …"));
+  try{
+    const r=await fetch("/api/pfad",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({start:modell.start,plugins:modell.plugins,screens:modell.screens})});
+    const a=await r.json();
+    if(!r.ok||!a.ok){status(T("Nicht gespeichert: ")+(a.fehler||[]).join("; "),"fehler");return}
+    modell={start:a.start,plugins:a.plugins===true,screens:a.screens};
+    dirty=false;
+    $("modusInfo").textContent=T("Dies ist dein eigener Pfad.");
+    status(T("Gespeichert ✓")+((a.warnungen||[]).length?" "+T("Hinweis: ")+a.warnungen.join("; "):""),"ok");
+    zeichne();
+  }catch(e){status(T("Nicht gespeichert."),"fehler")}
+}
+async function zuruecksetzen(){
+  if(!confirm(T("Alle eigenen Änderungen verwerfen und die Vorlage des Modus nehmen?")))return;
+  try{const r=await fetch("/api/pfad/zuruecksetzen",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});const a=await r.json();if(!a.ok)throw new Error("x");anwenden(a);status(T("Zurückgesetzt auf die Vorlage."),"ok")}
+  catch(e){status(T("Zurücksetzen hat nicht geklappt."),"fehler")}
+}
+addEventListener("beforeunload",e=>{if(dirty){e.preventDefault();e.returnValue=""}});
+const params=new URLSearchParams(location.search);
+fetch("config.json",{cache:"no-store"}).then(r=>r.json()).then(c=>I18N.laden(params.get("lang")||c.language||"de")).then(()=>I18N.statisch()).catch(()=>{}).then(laden).then(()=>{window.__ready=true});
+</script></body></html>
