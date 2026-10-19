@@ -155,7 +155,7 @@ Type=Application
 Name=Omaclusive
 Comment=Offene Bild-Fernbedienung
 Exec=${DEST}/start-talker.sh
-Icon=${DEST}/img/sagen.svg
+Icon=${DEST}/img/glatt/sagen.svg
 Categories=Utility;Accessibility;
 EOF
 cat > "$APPS/omaclusive-einrichten.desktop" <<EOF
@@ -163,7 +163,7 @@ cat > "$APPS/omaclusive-einrichten.desktop" <<EOF
 Type=Application
 Name=Omaclusive einrichten
 Exec=${DEST}/start-talker.sh setup.html
-Icon=${DEST}/img/anpassen.svg
+Icon=${DEST}/img/glatt/anpassen.svg
 Categories=Utility;Accessibility;
 EOF
 cat > "$APPS/omaclusive-testen.desktop" <<EOF
@@ -172,7 +172,7 @@ Type=Application
 Name=Omaclusive testen
 Comment=Fenster zum Ausprobieren
 Exec=${DEST}/start-talker-fenster.sh
-Icon=${DEST}/img/sagen.svg
+Icon=${DEST}/img/glatt/sagen.svg
 Categories=Utility;Accessibility;
 EOF
 update-desktop-database "$APPS" >/dev/null 2>&1 || true
