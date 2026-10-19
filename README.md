@@ -30,6 +30,7 @@ In an emergency call **112** (EU) or your local emergency number, or let someone
   The name is only spoken on this computer. The server sees the topic, the time and the IP address of this computer, as with any web request.
 - **Keep the topic secret.** Whoever knows the topic can read the messages and send messages to it.
   Share the link only with the phones that should receive the call, and do not post it online. A new random topic can be created in the caregivers' area.
+- **TV** (and radio as a stream) only fetches the programme when someone picks a channel, straight from the address entered. The broadcaster sees the IP address of this computer. Omaclusive sends no data of its own.
 - Without a network nothing is sent. The rest keeps working.
 
 ## Installation
@@ -45,7 +46,7 @@ Then open your app launcher and search for **Omaclusive**. It does not start by 
 `install.sh` needs no root. It makes its own copy under `~/.local/share/omaclusive` and downloads Piper and a voice, with a checksum.
 Language: without options it follows your system language (`$LANG`: German or English, otherwise English). Force one with `./install.sh --lang en` or `--lang de`.
 You can change the language and the voice later in the app: hold the small **⚙ Set up** key for 3 seconds, then pick **🌐 Language**. The voice is downloaded the first time you pick it (about 65 MB, checked with a checksum).
-Requirements: Omarchy or something Arch-like, `chromium`, `python3`, `curl`, optionally `mpv` for movies.
+Requirements: Omarchy or something Arch-like, `chromium`, `python3`, `curl`, optionally `mpv` for movies and TV, `yt-dlp` for YouTube live channels.
 
 ## For relatives and caregivers
 
@@ -101,7 +102,7 @@ Re-create the sets with `python3 tools/karten_glatt.py img/glatt plugins/grundbe
 
 ## Everyday use
 
-In the default mode (b) there are six areas at the start: **I want to say something**, **Pictures**, **Movies**, **Radio**, **Tasks**, **Controls** (volume, Wi-Fi, Bluetooth, turn off).
+In the default mode (b) there are seven areas at the start: **I want to say something**, **Pictures**, **Movies**, **TV** (only with channels set up), **Radio**, **Tasks**, **Controls** (volume, Wi-Fi, Bluetooth, turn off).
 Bluetooth needs `bluetoothctl` (BlueZ). The rule everywhere: **at most two big tiles**, Back and Start are always reachable, calm and predictable.
 Everything else is an add-on. A folder `plugins/<name>/` with `plugin.json` and pictures
 becomes a card as soon as it is there. Remove it and the card is gone.
@@ -129,6 +130,36 @@ Radio is a main tile. The source is in `config.json` under `radio`:
 - No address set: the card honestly says "This is not set up yet." Nothing opens.
 
 What is true about **Open Radio Atlas**: it is a native Omarchy plugin (Quickshell, a globe with mpv), not a web page. It cannot be embedded in the Omaclusive window and has no documented launch command, so Omaclusive does not start it. The default is therefore the browser page *Open Radio World*; a favourite station as a stream URL is the calm, reliable option. Both are edited in the caregivers' area (`setup.html`). Radio needs internet (or a station in the local network).
+
+## TV
+
+**TV** is a main tile (modes b and c). Behind it there is one tile per favourite channel, usually two or three. As everywhere, at most two tiles are shown; with more channels **Other** pages on.
+
+- One press on a channel starts it **right away, full screen** (with `mpv`). No start animation, no control bar, no text, no menu.
+- Full screen, two buttons: **left = back to the start**, **right = pause / continue**, **hold both for 3 seconds = back** (the time is `setupHoldMs`). **Esc** works too. With a mouse: left click = left, right click = right.
+  One button (`knopf.modus` `"ein"`): short press = pause / continue, hold for 3 seconds = back. The lock time `debounceMs` applies as everywhere.
+- **If a channel does not work** (no network, wrong address, no picture after `fernsehen.wartenSekunden`, default `30`): a calm picture with "Not working now", a short announcement, then the start. A press closes the message, otherwise it goes away after 8 seconds. No technical text.
+- Without a channel set up the tile is invisible. Then everything is as before.
+- A reminder ends the TV so that it can be seen.
+
+The channels live in `config.json` (the caregivers' area has **Save channels** for up to three):
+
+```json
+"fernsehen": {
+  "sender": [
+    { "name": "DW", "bild": "img/fernsehen.svg", "stream": "https://dwamdstream102.akamaized.net/hls/live/2015525/dwstream102/index.m3u8" }
+  ],
+  "wartenSekunden": 30
+}
+```
+
+- `stream`: an `http(s)` address that `mpv` can play (a broadcaster's HLS `.m3u8`) or a **YouTube live link** (`mpv` needs `yt-dlp` for that). At most 6 channels.
+- `bild`: a picture from `img/` (default `img/fernsehen.svg`).
+- The page only sends the number of the channel. The server always reads the address from `config.json`.
+- TV needs internet. Some broadcasters only stream inside their country or black out single programmes for rights reasons. Addresses change sometimes; then enter the new link.
+- No account, no telemetry. Omaclusive itself only opens the address you entered (through `mpv`).
+
+**Calm and safe for photosensitivity (epilepsy).** Nothing in the TV part flashes, blinks, shakes or flickers, and there is no start animation (rule after WCAG 2.3.1: never more than three flashes per second, here none at all). `mpv` starts with `--osc=no --osd-level=0 --no-osd-bar`, without subtitles and without its own config, black until the picture arrives. The "Not working now" message is a still picture. Omaclusive has no influence on what the channels themselves show.
 
 ## Reminders and tasks
 
@@ -313,6 +344,7 @@ node test_i18n.js
 python3 test_modi.py                               # modes, path store, editor API
 node --experimental-websocket test_editor.js    # browser test of the editor
 python3 test_pflege.py                            # reminders and tasks
+python3 test_fernsehen.py                         # TV: channels, calm mpv call, buttons inside mpv
 node --experimental-websocket test_eingabe.js   # browser test with keyboard and mouse (needs ffmpeg for the film tests)
 ```
 

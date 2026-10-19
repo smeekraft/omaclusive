@@ -47,9 +47,10 @@ for lang in ("de", "en"):
     ok(not any(k["aktion"]["typ"] == "untermenue" for k in va["screens"]["start"]["liste"]), "Modus a: kein Untermenü")
     ok(va["plugins"] is False and modi.vorlage("c", lang)["plugins"] is True and modi.vorlage("b", lang)["plugins"] is False, "Zusatzpaket nur in c")
     start_b = [k["wort"] for k in modi.vorlage("b", lang)["screens"]["start"]["liste"]]
-    ok(len(start_b) == 6, "Modus b: sechs Bereiche (Sagen, Bilder, Filme, Radio, Aufgaben, Steuern)")
+    ok(len(start_b) == 7, "Modus b: sieben Bereiche (Sagen, Bilder, Filme, Fernsehen, Radio, Aufgaben, Steuern)")
     typen_b = [k["aktion"]["typ"] for k in modi.vorlage("b", lang)["screens"]["start"]["liste"]]
     ok("radio" in typen_b and "aufgaben" in typen_b, "Modus b: Radio und Aufgaben als Hauptkacheln")
+    ok("fernsehen" in typen_b, "Modus b: Fernsehen als Hauptkachel")
     ok(not any(k["aktion"]["typ"] in ("radio", "aufgaben") for k in va["screens"]["start"]["liste"]), "Modus a bleibt bei drei Karten")
 ok(daten["modi"]["a"]["maxEbenen"] == 1 and daten["modi"]["b"]["maxEbenen"] == 2 and daten["modi"]["c"]["maxEbenen"] == 3, "Ebenen 1/2/3")
 # Hilferuf in Modus a fragt vorher nach

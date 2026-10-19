@@ -56,12 +56,19 @@ let erinnerungenGesehen = {};
 let schauListe = [];
 let schauI = 0;
 let schauFehler = 0;
-let wahlWartet = null; // gewählte Kachel, die noch vergrößert wartet: { seite, timer }
+let wahlWartet = null;
+let tvAn = false; // ein Sender läuft im Vollbild (mpv)
+let tvTimer = null;
+let tvToken = 0; // gewählte Kachel, die noch vergrößert wartet: { seite, timer }
 
 const el = id => document.getElementById(id);
 
 function kartenVon(screen) {
-  return Pfad.karten(screen, C && C.ziele);
+  // Die Fernsehen-Kachel zeigt sich nur, wenn mindestens ein Sender eingetragen ist.
+  return Pfad.karten(screen, C && C.ziele).filter(card => {
+    const a = Pfad.aktionVon(card);
+    return !(a && a.typ === "fernsehen" && !senderListe().length);
+  });
 }
 
 function ohrStopp() {
@@ -925,6 +932,12 @@ function medienPausieren() {
 
 function erinnerungZeigen(e) {
   abbrechenWahl();
+  if (tvAn) {
+    // Fernsehen läuft im Vollbild: aus, damit die Erinnerung zu sehen ist
+    tvStopp();
+    away = false;
+    if (!window.__selftest) fetch("/api/back").catch(() => {});
+  }
   const wiederholS = Math.max(10, Math.min(600, Number(C && C.erinnerungWiederholSekunden) || 60));
   erinnerung = { id: e.id, tag: e.tag, text: e.text, zeit: e.zeit, n: 0, fortsetzen: medienPausieren() };
   const text = el("buehneText");
@@ -1045,6 +1058,7 @@ function goStart(grund) {
   abbrechenWahl();
   buehneAus();
   filmStopp();
+  tvStopp();
   const zuhause = istZuhause();
   if (grund === "zeit" && zuhause) {
     clearIdle();
@@ -1443,6 +1457,117 @@ function openDynamic(quelle, opt) {
     });
 }
 
+// ---- Fernsehen: eine Kachel je Lieblingssender, ein Druck startet den Stream im Vollbild (mpv) ----
+// Ruhig: kein Startbild, keine Bedienleiste, keine Texte, nichts blinkt (WCAG 2.3.1).
+function senderListe() {
+  const tv = (C && C.fernsehen) || {};
+  // dieselben Regeln wie fernsehen.sender_liste im Server, damit die Nummern gleich zählen
+  const url = /^https?:\/\/[^\s\x00-\x1f"'<>]{1,480}$/;
+  const name = x => String(x == null ? "" : x).replace(/\s+/g, " ").trim();
+  return (Array.isArray(tv.sender) ? tv.sender : [])
+    .map((s, nr) => ({ s: s, nr: nr }))
+    .filter(x => x.s && typeof x.s === "object" && x.s.aus !== true && name(x.s.name) && !/[\x00-\x1f\x7f]/.test(name(x.s.name))
+      && url.test(String(x.s.stream || "").trim()))
+    .slice(0, 6);
+}
+
+function oeffneFernsehen() {
+  const id = "ordner-fernsehen";
+  stack.push(cur);
+  // nr zählt die gültigen Sender, genau wie der Server (fernsehen.sender_liste).
+  C.screens[id] = {
+    name: T("Fernsehen"),
+    liste: senderListe().map((x, i) => ({
+      wort: String(x.s.name).replace(/\s+/g, " ").trim().slice(0, 40),
+      sprechen: String(x.s.name).replace(/\s+/g, " ").trim().slice(0, 40),
+      bild: /^img\/[A-Za-z0-9_.-]+\.svg$/.test(String(x.s.bild || "")) ? x.s.bild : "img/fernsehen.svg",
+      aktion: { typ: "sender", nr: i },
+    })),
+  };
+  zeige(id, { ansage: true });
+}
+
+function tvStopp() {
+  tvToken += 1;
+  if (tvTimer) clearTimeout(tvTimer);
+  tvTimer = null;
+  tvAn = false;
+}
+
+// Geht ein Sender nicht: ein ruhiges Bild, ein kurzes Wort, dann der Start. Kein Fachtext.
+function tvGehtNicht() {
+  goStart("still");
+  const box = el("hinweis");
+  if (box) {
+    box.querySelector("img").src = "img/fernsehen.svg";
+    box.querySelector(".wort").textContent = T("Geht gerade nicht");
+    box.hidden = false;
+    hinweisFest = true;
+    window.__hinweisBild = "img/fernsehen.svg";
+  }
+  // nach 8 Sekunden geht die Meldung still weg (jeder Druck schließt sie früher)
+  setTimeout(() => {
+    const b = el("hinweis");
+    if (b && !b.hidden && window.__hinweisBild === "img/fernsehen.svg" && !tvAn) {
+      hinweisFest = false;
+      versteckeHinweis();
+    }
+  }, 8000);
+  window.__tvFehler = (window.__tvFehler || 0) + 1;
+  sprich(T("Das Fernsehen geht gerade nicht."));
+  armIdle({ behalten: true });
+}
+
+function tvEnde(stand) {
+  tvStopp();
+  away = false;
+  if (stand && stand.fehler) tvGehtNicht();
+  else goStart("druck");
+}
+
+function tvBeobachten() {
+  const token = tvToken;
+  const poll = () => {
+    if (token !== tvToken) return;
+    fetch("/api/fernsehen", { cache: "no-store" }).then(r => r.ok ? r.json() : null).then(stand => {
+      if (token !== tvToken) return;
+      if (stand && stand.laeuft) {
+        tvTimer = setTimeout(poll, 1000);
+        return;
+      }
+      tvEnde(stand);
+    }).catch(() => {
+      if (token !== tvToken) return;
+      tvTimer = setTimeout(poll, 2000);
+    });
+  };
+  if (tvTimer) clearTimeout(tvTimer);
+  tvTimer = setTimeout(poll, 1000);
+}
+
+function starteSender(nr) {
+  if (window.__selftest || window.__test) {
+    sprich(T("Test. Nicht geöffnet."));
+    armIdle();
+    return;
+  }
+  clearIdle();
+  fetch("/api/fernsehen", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ nr: nr }),
+  }).then(r => r.ok ? r.json() : null).then(res => {
+    if (!res || !res.ok) {
+      tvGehtNicht();
+      return;
+    }
+    tvStopp();
+    tvAn = true;
+    away = true;
+    tvBeobachten();
+  }).catch(() => tvGehtNicht());
+}
+
 function oeffneZiel(wert) {
   away = true;
   if (/^https?:/i.test(wert)) fetch("/api/open?url=" + encodeURIComponent(wert));
@@ -1520,6 +1645,19 @@ function run(card) {
   }
   if (a.typ === "radio") {
     starteRadio();
+    return;
+  }
+  if (a.typ === "fernsehen") {
+    if (!Pfad.darfTiefer(stack.length + 1)) {
+      sprich(T("Das ist die letzte Ebene."));
+      armIdle();
+      return;
+    }
+    oeffneFernsehen();
+    return;
+  }
+  if (a.typ === "sender") {
+    starteSender(a.nr);
     return;
   }
   if (a.typ === "aufgaben") {
@@ -2000,6 +2138,11 @@ async function runSelftest() {
 }
 
 addEventListener("focus", () => {
+  if (tvAn) {
+    // mpv ist zu: gleich nachsehen, ob es ein Fehler war (dann die ruhige Meldung)
+    tvBeobachten();
+    return;
+  }
   if (away && phase === "app") goStart("druck");
 });
 
