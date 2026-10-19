@@ -48,6 +48,29 @@ Sprache: ohne Angabe nach der Systemsprache (`$LANG`: Deutsch oder Englisch, son
 Später in der App ändern: die kleine Taste **⚙ Einrichten** 3 Sekunden halten, dann **🌐 Sprache**. Die Stimme wird beim ersten Mal geladen (etwa 65 MB, mit Prüfsumme).
 Voraussetzungen: Omarchy oder Arch-ähnlich, `chromium`, `python3`, `curl`, optional `mpv` für Filme und Fernsehen, `yt-dlp` für YouTube-Live-Sender.
 
+## Als Omarchy-Plugin
+
+Omaclusive kann als ein ruhiges Symbol in der Omarchy-Leiste (Quattro) wohnen.
+
+```bash
+omarchy plugin add https://github.com/smeekraft/omaclusive.git --enable
+```
+
+`omarchy plugin add` selbst führt nichts aus. Beim ersten Klick auf das Symbol öffnet sich ein Terminal und das eigene `install.sh` läuft sichtbar durch (ohne Root, ohne sudo). Danach startet ein Klick Omaclusive im Vollbild.
+
+Benötigt: `python3`, `chromium`, `curl`. Optional: `mpv`, `yt-dlp`, `espeak-ng`.
+Externe Downloads von `install.sh`: Piper (GitHub-Release) und eine Piper-Stimme, beide sha256-geprüft.
+Eine vorhandene `config.json` bleibt unangetastet.
+
+Aktualisieren: `omarchy plugin update smeekraft.omaclusive`, danach in `~/.config/omarchy/plugins/smeekraft.omaclusive` noch einmal `./install.sh`.
+
+Entfernen:
+
+```bash
+omarchy plugin remove smeekraft.omaclusive
+rm -rf ~/.local/share/omaclusive ~/.local/share/applications/omaclusive*.desktop
+```
+
 ## Für Angehörige und Betreuende
 
 Die Kurzfassung für die Person, die Omaclusive einrichtet.
