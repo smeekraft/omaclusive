@@ -56,7 +56,7 @@ Omaclusive kann als ein ruhiges Symbol in der Omarchy-Leiste (Quattro) wohnen.
 omarchy plugin add https://github.com/smeekraft/omaclusive.git --enable
 ```
 
-`omarchy plugin add` selbst führt nichts aus. Beim ersten Klick auf das Symbol öffnet sich ein Terminal und das eigene `install.sh` läuft sichtbar durch (ohne Root, ohne sudo). Danach startet ein Klick Omaclusive im Vollbild.
+`omarchy plugin add` selbst führt nichts aus. Beim ersten Klick auf das Symbol öffnet sich ein Terminal und das eigene `install.sh` läuft sichtbar durch (ohne Root-Rechte). Danach startet ein Klick Omaclusive im Vollbild.
 
 Benötigt: `python3`, `chromium`, `curl`. Optional: `mpv`, `yt-dlp`, `espeak-ng`.
 Externe Downloads von `install.sh`: Piper (GitHub-Release) und eine Piper-Stimme, beide sha256-geprüft.

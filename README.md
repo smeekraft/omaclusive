@@ -56,7 +56,7 @@ Omaclusive can live in the Omarchy (Quattro) top bar as one calm icon.
 omarchy plugin add https://github.com/smeekraft/omaclusive.git --enable
 ```
 
-`omarchy plugin add` itself runs nothing. On the first click on the icon a terminal opens and runs this plugin's own `install.sh` (no root, no sudo), so you see every step. After that a click starts Omaclusive full screen.
+`omarchy plugin add` itself runs nothing. On the first click on the icon a terminal opens and runs this plugin's own `install.sh` (no root rights needed), so you see every step. After that a click starts Omaclusive full screen.
 
 Requirements: `python3`, `chromium`, `curl`. Optional: `mpv`, `yt-dlp`, `espeak-ng`.
 External downloads by `install.sh`: Piper (GitHub release) and one Piper voice, both checked with sha256.

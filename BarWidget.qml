@@ -4,7 +4,7 @@ import qs.Ui
 
 // Omaclusive in the Omarchy bar: one calm icon, no animation, no blinking.
 // Click: start Omaclusive full screen. If it is not installed yet, open a
-// terminal that runs this plugin's own install.sh (no root, no sudo) so the
+// terminal that runs this plugin's own install.sh (no root rights) so the
 // user sees every step. `omarchy plugin add` itself never runs anything.
 BarWidget {
   id: root
