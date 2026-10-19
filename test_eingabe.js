@@ -824,6 +824,49 @@ async function radioOhneQuelle(client, t, sprache) {
   pruefe(t + ": ohne Radio-Adresse sagt es ehrlich, dass es nicht eingerichtet ist", (await gesprochen(client)).some(x => x.indexOf(text) === 0) && (await zustand(client)).screen === "start" && (await buehneStand(client)) === "", await gesprochen(client));
 }
 
+// Fernsehen: eine Kachel je Sender, ein Druck startet mpv (hier ein Ersatz-mpv), danach zurück zum Start.
+// Geht ein Sender nicht: ruhiges Bild, kurzes Wort, Start. Der Ersatz-mpv schreibt seinen Aufruf auf.
+function ersatzMpv(an) {
+  const f = path.join(bin, "mpv");
+  if (!an) { try { fs.unlinkSync(f); } catch (err) {} return; }
+  fs.writeFileSync(f, "#!/bin/sh\necho \"$@\" > \"$HOME/mpv-aufruf.txt\"\ncase \"$*\" in *kaputt*) sleep 1; exit 2;; esac\nsleep 3\nexit 0\n", { mode: 0o755 });
+}
+
+async function fernsehenAblauf(client, t, sprache) {
+  const W = sprache === "en" ? { tv: "TV", meldung: "Not working now" } : { tv: "Fernsehen", meldung: "Geht gerade nicht" };
+  try {
+    pruefe(t + ": Fernsehen ist eine Kachel auf dem Start", await waehleKarteMitWort(client, W.tv));
+    await sleep(600);
+    let z = await zustand(client);
+    // zwei Sender und Zurück sind drei Karten: links der erste Sender, rechts "Andere" (wie in jeder Unterebene)
+    pruefe(t + ": je Sender eine Kachel, höchstens zwei auf einmal", z.screen === "ordner-fernsehen" && z.paar.links === "Testsender" && z.paar.sonderR === "andere" && (await kacheln(client)) === 2, z);
+    await taste(client, "ArrowLeft");
+    await sleep(SPAET + 1200);
+    const aufruf = fs.existsSync(path.join(home, "mpv-aufruf.txt")) ? fs.readFileSync(path.join(home, "mpv-aufruf.txt"), "utf8") : "";
+    pruefe(t + ": Sender startet sofort im Vollbild, ruhig (ohne Bedienleiste und Texte)", ["--fs", "--osc=no", "--osd-level=0", "--no-osd-bar", "-- http://127.0.0.1:9/test.m3u8"].every(x => aufruf.indexOf(x) !== -1) && await ev(client, "tvAn === true"), aufruf);
+    await sleep(3500);
+    z = await zustand(client);
+    pruefe(t + ": Ende des Senders führt zum Start", z.screen === "start" && await ev(client, "tvAn === false && document.getElementById('hinweis').hidden"), z);
+    pruefe(t + ": Fernsehen wieder gefunden", await waehleKarteMitWort(client, W.tv));
+    await sleep(600);
+    pruefe(t + ": zweiter Sender über Andere", await waehleKarteMitWort(client, "Kaputt"));
+    await sleep(SPAET + 3000);
+    z = await zustand(client);
+    const wort = await ev(client, "document.querySelector('#hinweis .wort').textContent");
+    pruefe(t + ": Sender geht nicht: ruhiges Bild und kurzes Wort, dann Start", z.screen === "start" && !(await ev(client, "document.getElementById('hinweis').hidden")) && wort === W.meldung && await ev(client, "window.__hinweisBild === 'img/fernsehen.svg'"), { z, wort });
+    await taste(client, "ArrowLeft");
+    await sleep(SPAET + 200);
+    pruefe(t + ": ein Druck schließt die Meldung", await ev(client, "document.getElementById('hinweis').hidden"));
+  } finally {
+    ersatzMpv(false);
+  }
+}
+
+async function ohneSender(client, t, sprache) {
+  const W = sprache === "en" ? { tv: "TV" } : { tv: "Fernsehen" };
+  pruefe(t + ": ohne Sender gibt es keine Fernsehen-Kachel", !(await waehleKarteMitWort(client, W.tv)));
+}
+
 async function aufgabenListe(client, t, sprache) {
   const W = sprache === "en" ? { aufgaben: "Tasks", nichts: "Nothing to do" } : { aufgaben: "Aufgaben", nichts: "Nichts zu tun" };
   pruefe(t + ": Aufgaben auf dem Start gefunden", await waehleKarteMitWort(client, W.aufgaben));
@@ -936,6 +979,8 @@ async function main() {
     await szenario(L + " Filme Ein-Knopf-Scan", sprache, c => { basis(c); c.knopf.modus = "ein"; c.knopf.scanMs = 700; seedFilme(["film1", "film2", "film3"]); }, "", (cl, t) => filmScan(cl, t, sprache));
     await szenario(L + " Radio im Fenster", sprache, c => { basis(c); seedFilme(["ton"]); c.radio = { modus: "stream", name: "Testsender", url: "", stream: "http://127.0.0.1:" + port + "/api/medium?name=ton.webm" }; }, "", (cl, t) => radioStream(cl, t, sprache));
     await szenario(L + " Radio ohne Adresse", sprache, c => { basis(c); }, "", (cl, t) => radioOhneQuelle(cl, t, sprache));
+    await szenario(L + " Fernsehen", sprache, c => { basis(c); ersatzMpv(true); c.fernsehen = { sender: [{ name: "Testsender", stream: "http://127.0.0.1:9/test.m3u8" }, { name: "Kaputt", stream: "http://127.0.0.1:9/kaputt.m3u8" }] }; }, "", (cl, t) => fernsehenAblauf(cl, t, sprache));
+    await szenario(L + " Fernsehen ohne Sender", sprache, c => { basis(c); c.fernsehen = { sender: [] }; }, "", (cl, t) => ohneSender(cl, t, sprache));
     await szenario(L + " Aufgaben abhaken", sprache, c => { basis(c); schreibePflege({ erinnerungen: [], aufgaben: [{ id: "a1", text: "Fenster schließen", erledigt: false }, { id: "a2", text: "Tabletten bereitlegen", erledigt: false }], bestaetigt: {} }); }, "", (cl, t) => aufgabenListe(cl, t, sprache));
     await szenario(L + " Erinnerung", sprache, c => { basis(c); c.erinnerungPruefSekunden = 1; schreibePflege({ erinnerungen: [{ id: "e1", zeit: "00:00", text: "Tabletten nehmen", wiederholen: "taeglich", tage: [], datum: "", aktiv: true }], aufgaben: [], bestaetigt: {} }); }, "", (cl, t) => erinnerungAblauf(cl, t, sprache));
     await szenario(L + " Betreuerseite Erinnerungen und Aufgaben", sprache, c => { basis(c); }, "pflege.html", (cl, t) => pflegeSeite(cl, t, sprache));

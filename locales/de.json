@@ -337,5 +337,12 @@
   "Die Stimme wird geladen, {} MB. Einen Moment …": "Die Stimme wird geladen, {} MB. Einen Moment …",
   "Die Stimme konnte nicht geladen werden. Ist das Internet an?": "Die Stimme konnte nicht geladen werden. Ist das Internet an?",
   "Sprache und Stimme": "Sprache und Stimme",
-  "Tippe auf eine Sprache. Die Texte und die Stimme wechseln. Beim ersten Mal wird die Stimme geladen.": "Tippe auf eine Sprache. Die Texte und die Stimme wechseln. Beim ersten Mal wird die Stimme geladen."
+  "Tippe auf eine Sprache. Die Texte und die Stimme wechseln. Beim ersten Mal wird die Stimme geladen.": "Tippe auf eine Sprache. Die Texte und die Stimme wechseln. Beim ersten Mal wird die Stimme geladen.",
+  "Fernsehen": "Fernsehen",
+  "Geht gerade nicht": "Geht gerade nicht",
+  "Das Fernsehen geht gerade nicht.": "Das Fernsehen geht gerade nicht.",
+  "Fernsehen: bis zu drei Lieblingssender, je ein Name und eine Stream-Adresse (oder ein YouTube-Live-Link). Leer lassen, wenn nicht gebraucht.": "Fernsehen: bis zu drei Lieblingssender, je ein Name und eine Stream-Adresse (oder ein YouTube-Live-Link). Leer lassen, wenn nicht gebraucht.",
+  "Sender speichern": "Sender speichern",
+  "Bitte Name und eine Adresse mit https:// eingeben.": "Bitte Name und eine Adresse mit https:// eingeben.",
+  "Sender gespeichert.": "Sender gespeichert."
 }

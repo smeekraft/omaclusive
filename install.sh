@@ -60,7 +60,7 @@ lade() {
 echo "== Omaclusive wird nach ${DEST} gelegt. Der bisherige Talker bleibt."
 mkdir -p "$DEST" "$APPS" "${DEST}/voices"
 for f in index.html setup.html editor.html modi.json modi.py app.js pfad.js sprache.js i18n.py sprache_wechseln.py audio_erzeugen.py \
-  server.py stimmen.py voices.json bausteine.py hilferuf.py praxis.py ohr.py config.example.json config.example.en.json \
+  server.py stimmen.py voices.json bausteine.py hilferuf.py praxis.py ohr.py fernsehen.py config.example.json config.example.en.json \
   start-talker.sh start-talker-fenster.sh startlib.sh zurueck.sh README.md README.de.md LICENSE CREDITS.md; do
   cp "$SRC/$f" "$DEST/"
 done
@@ -69,6 +69,8 @@ cp -a "$SRC/img" "$DEST/img"
 cp -a "$SRC/locales" "$DEST/locales"
 [ -d "$SRC/audio" ] && cp -a "$SRC/audio" "$DEST/audio"
 cp -a "$SRC/plugins" "$DEST/plugins"
+rm -rf "${DEST}/mpv"
+cp -a "$SRC/mpv" "$DEST/mpv"
 if [ -d "$SRC/ohr" ]; then
   rm -rf "${DEST}/ohr"
   cp -a "$SRC/ohr" "$DEST/ohr"
@@ -179,7 +181,8 @@ fehlend=""
 command -v python3 >/dev/null || fehlend="${fehlend} python3"
 command -v chromium >/dev/null || fehlend="${fehlend} chromium"
 command -v curl >/dev/null || fehlend="${fehlend} curl"
-command -v mpv >/dev/null || echo "== mpv fehlt. Filme sagen dann, dass es hier nicht geht."
+command -v mpv >/dev/null || echo "== mpv fehlt. Filme und Fernsehen sagen dann, dass es hier nicht geht."
+command -v yt-dlp >/dev/null || echo "== yt-dlp fehlt. Fernsehsender mit YouTube-Link gehen dann nicht (normale Stream-Adressen schon)."
 command -v espeak-ng >/dev/null || echo "== espeak-ng fehlt. Ohne Piper gibt es dann keine Ersatzstimme."
 if [ -n "$fehlend" ]; then
   echo "== Es fehlt noch:${fehlend}"

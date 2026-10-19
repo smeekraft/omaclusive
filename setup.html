@@ -32,6 +32,10 @@ input{font-size:1.8rem;width:70vw;padding:1rem;border-radius:12px;border:4px sol
  <p class="hint">Radio: Webseite (öffnet im Browser) oder Stream-Adresse (spielt hier, mit Pause).</p>
  <p><input id="radioUrl" type="text" placeholder="https://openradioworld.com/" style="width:34vw;font-size:1.2rem"> <input id="radioStream" type="text" placeholder="https://…/stream.mp3" style="width:34vw;font-size:1.2rem"> <button class="small" onclick="radioSpeichern()">Radio speichern</button></p>
  <p class="hint" id="radioMsg"></p>
+ <p class="hint">Fernsehen: bis zu drei Lieblingssender, je ein Name und eine Stream-Adresse (oder ein YouTube-Live-Link). Leer lassen, wenn nicht gebraucht.</p>
+ <div id="tvZeilen"></div>
+ <p><button class="small" onclick="tvSpeichern()">Sender speichern</button></p>
+ <p class="hint" id="tvMsg"></p>
  <p class="hint">Der Modus gilt für den ganzen Pfad. Er stellt auch Zeiten ein.</p>
  <p class="hint">Der Pfad wird in dieser festen Datei gespeichert:</p><p class="hint" id="pfadDatei"></p></div>
 <div id="v2" class="hide"><h1>Wo willst du hin?</h1><div class="row">
@@ -202,6 +206,19 @@ async function radioSpeichern(){
   C.radio=Object.assign({},C.radio,{modus:stream?'stream':'browser',url:url,stream:stream});
   const r=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(C)});
   $('radioMsg').textContent=r.ok?T('Radio gespeichert.'):T('Speichern hat nicht geklappt.')}
+function tvZeigen(){const l=((C&&C.fernsehen&&C.fernsehen.sender)||[]);let h='';
+  for(let i=0;i<3;i++)h+='<p><input id="tvName'+i+'" type="text" maxlength="40" style="width:16vw;font-size:1.2rem"> <input id="tvStream'+i+'" type="text" placeholder="https://…/master.m3u8" style="width:52vw;font-size:1.2rem"></p>';
+  $('tvZeilen').innerHTML=h;
+  for(let i=0;i<3;i++){const x=l[i]||{};$('tvName'+i).value=x.name||'';$('tvStream'+i).value=x.stream||''}}
+async function tvSpeichern(){
+  const web=/^https?:\/\/[^\s]+$/i,alt=((C.fernsehen&&C.fernsehen.sender)||[]),neu=[];
+  for(let i=0;i<3;i++){const name=$('tvName'+i).value.trim(),stream=$('tvStream'+i).value.trim();
+    if(!name&&!stream)continue;
+    if(!name||!web.test(stream)){$('tvMsg').textContent=T('Bitte Name und eine Adresse mit https:// eingeben.');return}
+    neu.push({name:name,bild:(alt[i]&&alt[i].bild)||'img/fernsehen.svg',stream:stream})}
+  C.fernsehen=Object.assign({},C.fernsehen,{sender:neu.concat(alt.slice(3))});
+  const r=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(C)});
+  $('tvMsg').textContent=r.ok?T('Sender gespeichert.'):T('Speichern hat nicht geklappt.')}
 async function autostartLesen(){
   try{const r=await fetch('/api/autostart',{cache:'no-store'});const d=r.ok?await r.json():null;
     if(d&&typeof d.an==='boolean'){$('autoBox').checked=d.an;$('autoBox').disabled=false;autostartZeigen(d.an);return}}catch(e){}
@@ -273,6 +290,6 @@ Promise.all([
 ]).then(([_l,c,sys,cat,pf])=>{
   C=migrate(c,sys);catalog=cat.bausteine||[];
   if(pf&&pf.ok){PFAD=pf;C.screens=pf.screens;C.start=pf.start;C.modus=pf.modus}
-  list();stilZeigen();zeitZeigen();modusZeigen();radioZeigen();autostartLesen().then(()=>{window.__ready=true});
+  list();stilZeigen();zeitZeigen();modusZeigen();radioZeigen();tvZeigen();autostartLesen().then(()=>{window.__ready=true});
 });
 </script></body></html>

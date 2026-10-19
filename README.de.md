@@ -30,6 +30,7 @@ Im Notfall **112** anrufen oder anrufen lassen. Verlass dich dafür nicht auf Om
   Der Name wird nur auf diesem Rechner gesprochen. Der Server sieht das Topic, die Zeit und die IP-Adresse dieses Rechners, wie bei jeder Web-Anfrage.
 - **Halte das Topic geheim.** Wer es kennt, kann die Nachrichten lesen und selbst welche dorthin schicken.
   Gib den Link nur an die Handys, die den Ruf bekommen sollen, und stell ihn nicht ins Netz. In der Betreuung gibt es neue Zufalls-Topics.
+- **Fernsehen** (und Radio als Stream) holt das Programm erst, wenn jemand einen Sender wählt, direkt beim eingetragenen Sender. Der Sender sieht dabei die IP-Adresse dieses Rechners. Omaclusive schickt keine eigenen Daten mit.
 - Ohne Netz wird nichts gesendet. Der Rest funktioniert weiter.
 
 ## Installation
@@ -45,7 +46,30 @@ Danach im App-Menü nach **Omaclusive** suchen. Es startet nicht von selbst. Bei
 `install.sh` läuft ohne Root, legt eine eigene Kopie unter `~/.local/share/omaclusive` an und lädt Piper inkl. Stimme mit Prüfsumme.
 Sprache: ohne Angabe nach der Systemsprache (`$LANG`: Deutsch oder Englisch, sonst Englisch). Erzwingen mit `./install.sh --lang de` oder `--lang en`.
 Später in der App ändern: die kleine Taste **⚙ Einrichten** 3 Sekunden halten, dann **🌐 Sprache**. Die Stimme wird beim ersten Mal geladen (etwa 65 MB, mit Prüfsumme).
-Voraussetzungen: Omarchy oder Arch-ähnlich, `chromium`, `python3`, `curl`, optional `mpv` für Filme.
+Voraussetzungen: Omarchy oder Arch-ähnlich, `chromium`, `python3`, `curl`, optional `mpv` für Filme und Fernsehen, `yt-dlp` für YouTube-Live-Sender.
+
+## Als Omarchy-Plugin
+
+Omaclusive kann als ein ruhiges Symbol in der Omarchy-Leiste (Quattro) wohnen.
+
+```bash
+omarchy plugin add https://github.com/smeekraft/omaclusive.git --enable
+```
+
+`omarchy plugin add` selbst führt nichts aus. Beim ersten Klick auf das Symbol öffnet sich ein Terminal und das eigene `install.sh` läuft sichtbar durch (ohne Root-Rechte). Danach startet ein Klick Omaclusive im Vollbild.
+
+Benötigt: `python3`, `chromium`, `curl`. Optional: `mpv`, `yt-dlp`, `espeak-ng`.
+Externe Downloads von `install.sh`: Piper (GitHub-Release) und eine Piper-Stimme, beide sha256-geprüft.
+Eine vorhandene `config.json` bleibt unangetastet.
+
+Aktualisieren: `omarchy plugin update smeekraft.omaclusive`, danach in `~/.config/omarchy/plugins/smeekraft.omaclusive` noch einmal `./install.sh`.
+
+Entfernen:
+
+```bash
+omarchy plugin remove smeekraft.omaclusive
+rm -rf ~/.local/share/omaclusive ~/.local/share/applications/omaclusive*.desktop
+```
 
 ## Für Angehörige und Betreuende
 
@@ -102,7 +126,7 @@ Neu bauen: `python3 tools/karten_glatt.py img/glatt plugins/grundbeduerfnisse/gl
 
 ## Alltag
 
-Im Standard-Modus (b) gibt es sechs Bereiche am Start: **Ich will was sagen**, **Bilder**, **Filme**, **Radio**, **Aufgaben**, **Steuern** (Lautstärke, WLAN, Bluetooth, Ausschalten).
+Im Standard-Modus (b) gibt es sieben Bereiche am Start: **Ich will was sagen**, **Bilder**, **Filme**, **Fernsehen** (nur mit eingetragenen Sendern), **Radio**, **Aufgaben**, **Steuern** (Lautstärke, WLAN, Bluetooth, Ausschalten).
 Bluetooth braucht `bluetoothctl` (BlueZ). Regel überall: **höchstens zwei große Kacheln**, Zurück und Start sind immer erreichbar, ruhig und vorhersagbar.
 Alles weitere ist ein Zusatz. Ein Ordner unter `plugins/<name>/` mit `plugin.json` und Bildern
 wird zur Karte, sobald er da ist. Weg damit, und die Karte ist weg.
@@ -130,6 +154,37 @@ Radio ist eine Hauptkachel. Die Quelle steht in der `config.json` unter `radio`:
 - Keine Adresse eingetragen: Die Karte sagt ehrlich „Das ist noch nicht eingerichtet.“ Es öffnet sich nichts.
 
 Was bei **Open Radio Atlas** stimmt: Es ist ein natives Omarchy-Plugin (Quickshell, Globus mit mpv), keine Webseite. Es lässt sich nicht in das Omaclusive-Fenster einbetten und hat keinen dokumentierten Startbefehl, deshalb startet Omaclusive es nicht. Standard ist darum die Browserseite *Open Radio World*. Ein Lieblingssender als Stream-Adresse ist die ruhige, verlässliche Wahl. Beides wird im Betreuer-Bereich (`setup.html`) eingestellt. Radio braucht Internet (oder einen Sender im Heimnetz).
+
+## Fernsehen
+
+**Fernsehen** ist eine Hauptkachel (Modus b und c). Dahinter liegt eine Kachel je Lieblingssender, meist zwei oder drei. Wie überall sind höchstens zwei Kacheln zu sehen, bei mehr Sendern blättert **Andere** weiter.
+
+- Ein Druck auf einen Sender startet ihn **sofort im Vollbild** (mit `mpv`). Kein Startbild, keine Bedienleiste, keine Texte, kein Menü.
+- Im Vollbild, zwei Knöpfe: **links = Zurück zum Start**, **rechts = Pause / Weiter**, **beide 3 Sekunden halten = Zurück** (die Zeit ist `setupHoldMs`). **Esc** geht auch. Mit der Maus: Linksklick = links, Rechtsklick = rechts.
+  Ein Knopf (`knopf.modus` `"ein"`): kurz drücken = Pause / Weiter, 3 Sekunden halten = Zurück. Die Sperrzeit `debounceMs` gilt wie sonst auch.
+- **Geht ein Sender nicht** (kein Netz, Adresse falsch, kein Bild nach `fernsehen.wartenSekunden`, Standard `30`): ein ruhiges Bild mit „Geht gerade nicht“, eine kurze Ansage, dann der Start. Ein Druck schließt die Meldung, sonst geht sie nach 8 Sekunden von selbst weg. Kein Fachtext.
+- Ohne eingetragenen Sender ist die Kachel unsichtbar. Dann ist alles wie vorher.
+- Eine Erinnerung beendet das Fernsehen, damit sie zu sehen ist.
+
+Die Sender stehen in `config.json` (im Betreuerbereich unter **Sender speichern** für bis zu drei Sender):
+
+```json
+"fernsehen": {
+  "sender": [
+    { "name": "Das Erste", "bild": "img/fernsehen.svg", "stream": "https://daserste-live.ard-mcdn.de/daserste/live/hls/de/master.m3u8" },
+    { "name": "hr", "bild": "img/fernsehen.svg", "stream": "https://hrhls.akamaized.net/hls/live/2024525/hrhls/master.m3u8" }
+  ],
+  "wartenSekunden": 30
+}
+```
+
+- `stream`: eine `http(s)`-Adresse, die `mpv` spielen kann (HLS `.m3u8` der Sender) oder ein **YouTube-Live-Link** (dafür braucht `mpv` das Programm `yt-dlp`). Höchstens 6 Sender.
+- `bild`: ein Bild aus `img/` (Standard `img/fernsehen.svg`).
+- Die Oberfläche schickt nur die Nummer des Senders. Die Adresse liest der Server immer aus `config.json`.
+- Fernsehen braucht Internet. Manche Sender zeigen ihr Programm nur in Deutschland oder blenden einzelne Sendungen aus Rechtegründen aus. Die Adressen ändern sich manchmal; dann den neuen Link eintragen.
+- Kein Konto, keine Telemetrie. Omaclusive selbst ruft nur die eingetragene Adresse auf (über `mpv`).
+
+**Ruhig und sicher bei Fotosensibilität (Epilepsie).** Im Fernsehen-Teil blinkt, wackelt und flackert nichts, es gibt keine Startanimation (Regel nach WCAG 2.3.1: nie mehr als drei Blitze pro Sekunde, hier gar keine). `mpv` startet mit `--osc=no --osd-level=0 --no-osd-bar`, ohne Untertitel und ohne eigene Konfiguration, schwarz, bis das Bild da ist. Die Meldung „Geht gerade nicht“ ist ein stilles Bild. Auf den Inhalt der Sender selbst hat Omaclusive keinen Einfluss.
 
 ## Erinnerungen und Aufgaben
 
@@ -315,6 +370,7 @@ node test_i18n.js
 python3 test_modi.py                               # Modi, Pfad-Speicher, Editor-API
 node --experimental-websocket test_editor.js    # Browser-Test des Editors
 python3 test_pflege.py                            # Erinnerungen und Aufgaben
+python3 test_fernsehen.py                         # Fernsehen: Sender, ruhiger mpv-Aufruf, Knöpfe in mpv
 node --experimental-websocket test_eingabe.js   # Browser-Test mit Tastatur und Maus (braucht ffmpeg für die Film-Tests)
 ```
 

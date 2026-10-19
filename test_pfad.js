@@ -99,6 +99,7 @@ assert.deepStrictEqual(woerter("start"), [
   "Ich will was sagen",
   "Bilder",
   "Filme",
+  "Fernsehen",
   "Radio",
   "Aufgaben",
   "Steuern",
@@ -109,8 +110,8 @@ assert.deepStrictEqual(woerter("lautstaerke"), ["Lauter", "Leiser", "Stumm"]);
 assert.ok(!config.screens.internet && !config.screens.system && !config.screens.helligkeit, "alte Bereiche sind raus");
 
 const startZiele = Pfad.karten(config.screens.start).map(ziel);
-assert.deepStrictEqual(startZiele, ["sagen", "bilder", "filme", undefined, undefined, "steuern"]);
-assert.deepStrictEqual(Pfad.karten(config.screens.start).map(c => Pfad.aktionVon(c).typ), ["untermenue", "ordner", "ordner", "radio", "aufgaben", "untermenue"]);
+assert.deepStrictEqual(startZiele, ["sagen", "bilder", "filme", undefined, undefined, undefined, "steuern"]);
+assert.deepStrictEqual(Pfad.karten(config.screens.start).map(c => Pfad.aktionVon(c).typ), ["untermenue", "ordner", "ordner", "fernsehen", "radio", "aufgaben", "untermenue"]);
 assert.deepStrictEqual(Pfad.pruefeBaum(config.screens, "start"), []);
 assert.strictEqual(Pfad.istLeer({ aktion: { typ: "ziel", name: "browser" } }, config.ziele), true);
 assert.strictEqual(Pfad.istLeer({ aktion: { typ: "ziel", name: "browser" } }, { browser: "https://beispiel.invalid" }), false);
@@ -148,7 +149,7 @@ const startPaar = Pfad.duoPaar(Pfad.karten(config.screens.start), 0, false);
 assert.strictEqual(startPaar.links.wort, "Ich will was sagen");
 assert.strictEqual(startPaar.rechts.sonder, "andere");
 assert.strictEqual(startPaar.blaettern, true);
-assert.strictEqual(startPaar.liste.length, 6);
+assert.strictEqual(startPaar.liste.length, 7);
 const sagenPaar = Pfad.duoPaar(Pfad.karten(config.screens.sagen), 0, true);
 assert.strictEqual(sagenPaar.links.wort, "Hilferuf");
 assert.strictEqual(sagenPaar.rechts.sonder, "andere");

@@ -9,6 +9,7 @@ _cfg_lock = threading.Lock()
 VPROF = os.path.expanduser("~/.local/share/omaclusive/video-profil")
 CHILD = []
 _film = {"proc": None}
+_tv = {"proc": None, "gestoppt": False}
 def browser(): return shutil.which("chromium") or shutil.which("google-chrome") or "chromium"
 def launch(kind, target):
     back()
@@ -20,6 +21,7 @@ def launch(kind, target):
         cmd = ["xdg-open", target]
     CHILD.append(subprocess.Popen(cmd, start_new_session=True))
 def back():
+    _tv["gestoppt"] = True
     for c in CHILD:
         try: os.killpg(c.pid, signal.SIGTERM)
         except Exception: pass
@@ -139,6 +141,33 @@ def _film_starten(name):
     CHILD.append(proc)
     _film["proc"] = proc
     return {"ok": True}
+def _tv_starten(nr):
+    """Startet Sender Nummer nr aus config.json im Vollbild (mpv). Die Adresse kommt nie von der Oberfläche."""
+    import fernsehen
+    config = _lade_config()
+    liste = fernsehen.sender_liste(config)
+    if not isinstance(nr, int) or isinstance(nr, bool) or not 0 <= nr < len(liste):
+        return {"ok": False, "grund": "sender"}
+    if not fernsehen.bereit():
+        return {"ok": False, "grund": "mpv"}
+    back()
+    try:
+        proc = subprocess.Popen(fernsehen.mpv_befehl(liste[nr]["stream"], DIR, config), start_new_session=True,
+                                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except OSError:
+        return {"ok": False, "grund": "mpv"}
+    CHILD.append(proc)
+    _tv.update(proc=proc, gestoppt=False)
+    return {"ok": True}
+def _tv_stand():
+    import fernsehen
+    proc = _tv.get("proc")
+    if not proc:
+        return {"ok": True, "laeuft": False, "fehler": ""}
+    rc = proc.poll()
+    if rc is None:
+        return {"ok": True, "laeuft": True, "fehler": ""}
+    return {"ok": True, "laeuft": False, "fehler": fernsehen.ergebnis(rc, _tv.get("gestoppt"))}
 def _film_stand():
     proc = _film.get("proc")
     return {"ok": True, "laeuft": bool(proc) and proc.poll() is None}
@@ -318,6 +347,8 @@ class H(http.server.SimpleHTTPRequestHandler):
             return s.j({"ok": True, "erinnerungen": daten["erinnerungen"], "aufgaben": daten["aufgaben"]})
         if u.path == "/api/film":
             return s.j(_film_stand())
+        if u.path == "/api/fernsehen":
+            return s.j(_tv_stand())
         if u.path == "/api/pfad":
             return s.j(_pfad_antwort())
         if u.path == "/api/modi":
@@ -398,6 +429,9 @@ class H(http.server.SimpleHTTPRequestHandler):
         if s.path == "/api/baustein":
             import bausteine
             return s.j(bausteine.execute(data.get("name", ""), bool(data.get("confirm")), data))
+        if s.path == "/api/fernsehen":
+            if not _lokal_ok(s): return s.j({"ok": False}, 403)
+            return s.j(_tv_starten(data.get("nr")))
         if s.path == "/api/say":
             import bausteine
             texte = data.get("texte")

@@ -24,7 +24,7 @@ _RE_DATEI = re.compile(r"^[A-Za-z0-9_-]{1,40}\.json$")
 _RE_BILD = re.compile(r"^(img/[A-Za-z0-9_.-]{1,60}\.svg|plugins/[a-z0-9_-]{1,40}/[A-Za-z0-9_.-]{1,60}\.svg)$")
 _RE_STEUER = re.compile(r"[\x00-\x1f\x7f]")
 _VERBOTEN_PRAEFIX = ("plugin-", "ordner-", "dyn-")
-_AKTIONEN = ("untermenue", "ordner", "hilferuf", "baustein", "sprechen", "dynamisch", "link", "datei", "radio", "aufgaben")
+_AKTIONEN = ("untermenue", "ordner", "hilferuf", "baustein", "sprechen", "dynamisch", "link", "datei", "radio", "aufgaben", "fernsehen")
 _RE_URL = re.compile(r"^https?://[^\s\x00-\x1f]{1,480}$")
 _QUELLEN_ORDNER = ("bilder", "filme")
 _QUELLEN_LISTE = ("wlan.list", "bt.list")
@@ -146,7 +146,7 @@ def _aktion(a, fehler, wo, bausteine):
             fehler.append("%s: Ordner ungültig" % wo)
             return None
         return {"typ": typ, "quelle": q, "ziel": q}
-    if typ in ("hilferuf", "radio", "aufgaben"):
+    if typ in ("hilferuf", "radio", "aufgaben", "fernsehen"):
         return {"typ": typ}
     if typ == "baustein":
         if a.get("name") not in bausteine:

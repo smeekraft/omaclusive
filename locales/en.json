@@ -337,5 +337,12 @@
   "Die Stimme wird geladen, {} MB. Einen Moment …": "Downloading the voice, {} MB. One moment …",
   "Die Stimme konnte nicht geladen werden. Ist das Internet an?": "The voice could not be downloaded. Is the internet on?",
   "Sprache und Stimme": "Language and voice",
-  "Tippe auf eine Sprache. Die Texte und die Stimme wechseln. Beim ersten Mal wird die Stimme geladen.": "Tap a language. The texts and the voice change. The voice is downloaded the first time."
+  "Tippe auf eine Sprache. Die Texte und die Stimme wechseln. Beim ersten Mal wird die Stimme geladen.": "Tap a language. The texts and the voice change. The voice is downloaded the first time.",
+  "Fernsehen": "TV",
+  "Geht gerade nicht": "Not working now",
+  "Das Fernsehen geht gerade nicht.": "The TV is not working right now.",
+  "Fernsehen: bis zu drei Lieblingssender, je ein Name und eine Stream-Adresse (oder ein YouTube-Live-Link). Leer lassen, wenn nicht gebraucht.": "TV: up to three favourite channels, each with a name and a stream address (or a YouTube live link). Leave empty if not needed.",
+  "Sender speichern": "Save channels",
+  "Bitte Name und eine Adresse mit https:// eingeben.": "Please enter a name and an address starting with https://.",
+  "Sender gespeichert.": "Channels saved."
 }

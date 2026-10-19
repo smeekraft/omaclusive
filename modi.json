@@ -144,6 +144,14 @@
                 }
               },
               {
+                "wort": "Fernsehen",
+                "sprechen": "Fernsehen",
+                "bild": "img/fernsehen.svg",
+                "aktion": {
+                  "typ": "fernsehen"
+                }
+              },
+              {
                 "wort": "Radio",
                 "sprechen": "Radio",
                 "bild": "img/radio.svg",
@@ -294,6 +302,14 @@
                   "typ": "ordner",
                   "quelle": "filme",
                   "ziel": "filme"
+                }
+              },
+              {
+                "wort": "TV",
+                "sprechen": "TV",
+                "bild": "img/fernsehen.svg",
+                "aktion": {
+                  "typ": "fernsehen"
                 }
               },
               {
@@ -465,6 +481,14 @@
                   "typ": "ordner",
                   "quelle": "filme",
                   "ziel": "filme"
+                }
+              },
+              {
+                "wort": "Fernsehen",
+                "sprechen": "Fernsehen",
+                "bild": "img/fernsehen.svg",
+                "aktion": {
+                  "typ": "fernsehen"
                 }
               },
               {
@@ -652,6 +676,14 @@
                   "typ": "ordner",
                   "quelle": "filme",
                   "ziel": "filme"
+                }
+              },
+              {
+                "wort": "TV",
+                "sprechen": "TV",
+                "bild": "img/fernsehen.svg",
+                "aktion": {
+                  "typ": "fernsehen"
                 }
               },
               {
