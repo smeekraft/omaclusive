@@ -1,4 +1,5 @@
 <!doctype html><html lang="de" translate="no" class="notranslate"><head><meta charset="utf-8"><meta name="google" content="notranslate"><link rel="icon" href="data:,"><title>Einrichten</title>
+<script src="sitzung.js"></script>
 <script src="sprache.js"></script>
 <style>body{margin:0;background:#111;color:#fff;font-family:sans-serif;text-align:center}
 h1{font-size:3.2rem;margin:4vh 0 2vh}h2{font-size:2rem;margin:3vh 0 1vh}
@@ -241,7 +242,7 @@ function saveLink(){let u=$('link').value.trim();if(!u)return;if(!/^https?:\/\//
   cur.action={type:'url',url:u};cur.aktion={typ:'link',url:u};delete cur.next;delete cur.bestaetigen;
   save(Tf('{} öffnet jetzt diesen Link.',cur.wort||cur.label))}
 async function pickFile(folder){$('linkBox').classList.add('hide');$('fileBox').classList.remove('hide');$('fileMsg').textContent=T('Das Auswahlfenster ist offen …');
-  const r=await (await fetch('/api/pick?folder='+(folder?1:0))).json();
+  const r=await (await fetch('/api/pick',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({folder:!!folder})})).json();
   if(!r.path){$('fileMsg').textContent=T('Nichts gewählt. Noch mal versuchen?');return}
   cur.label=cur.wort||cur.label;cur.image=cur.bild||cur.image;
   cur.action={type:'file',path:r.path};cur.aktion={typ:'datei',pfad:r.path};delete cur.next;delete cur.bestaetigen;

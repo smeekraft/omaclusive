@@ -11,6 +11,7 @@ import tempfile
 import time
 
 import modi
+import sitzung
 
 DIR = os.path.dirname(os.path.abspath(__file__))
 PORT = int(os.environ.get("MODI_PORT", "8799"))
@@ -139,12 +140,21 @@ c = laden("config.example.json"); c["modus"] = "b"
 with open(cfgp, "w", encoding="utf-8") as h: json.dump(c, h)
 srv = subprocess.Popen([sys.executable, "server.py"], cwd=DIR, env=dict(os.environ, PORT=str(PORT), HOME=home), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 try:
-    def req(methode, pfad, body=None, host=None, origin=None):
+    geheim = None
+    for _ in range(60):
+        try:
+            geheim = sitzung.lesen(PORT, home)
+            break
+        except OSError:
+            time.sleep(0.15)
+    ok(bool(geheim), "Sitzungsgeheimnis liegt bereit")
+    def req(methode, pfad, body=None, host=None, origin=None, token=True):
         for _ in range(60):
             try:
                 con = http.client.HTTPConnection("127.0.0.1", PORT, timeout=5)
                 kopf = {"Host": host or "127.0.0.1:%d" % PORT}
                 if origin: kopf["Origin"] = origin
+                if token: kopf["X-Omaclusive-Token"] = geheim
                 if body is not None: kopf["Content-Type"] = "application/json"
                 con.request(methode, pfad, json.dumps(body) if body is not None else None, kopf)
                 a = con.getresponse(); t = a.read().decode()
@@ -188,7 +198,7 @@ try:
     ok(not os.path.exists(p["datei"]), "Datei ist weg")
     # Zu große Anfrage
     con = http.client.HTTPConnection("127.0.0.1", PORT, timeout=5)
-    con.request("POST", "/api/pfad", b"x" * 10, {"Host": "127.0.0.1:%d" % PORT, "Content-Length": "5000000", "Content-Type": "application/json"})
+    con.request("POST", "/api/pfad", b"x" * 10, {"Host": "127.0.0.1:%d" % PORT, "Content-Length": "5000000", "Content-Type": "application/json", "X-Omaclusive-Token": geheim})
     try:
         a = con.getresponse(); ok(a.status == 400, "zu große Anfrage: 400")
     except Exception:

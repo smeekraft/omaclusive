@@ -3,6 +3,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const { spawn, execSync } = require("child_process");
+const { token } = require("./tools/token.js");
 
 function chromeBin() {
   if (process.env.CHROME) return process.env.CHROME;
@@ -15,7 +16,10 @@ function chromeBin() {
 const root = __dirname;
 const port = Number(process.env.PORT || 8799);
 const debugPort = Number(process.env.DEBUG_PORT || 9333);
-const page = "http://127.0.0.1:" + port + "/index.html?selftest=1";
+function seite() {
+  const geheim = token(port, process.env.HOME, root);
+  return "http://127.0.0.1:" + port + "/index.html?selftest=1#" + geheim;
+}
 
 function getJson(url) {
   return new Promise((resolve, reject) => {
@@ -106,7 +110,7 @@ async function main() {
     "--window-size=1480,780",
     "--user-data-dir=/tmp/omaclusive-chrome-test",
     "--remote-debugging-port=" + debugPort,
-    page,
+    seite(),
   ], { stdio: "ignore" });
   let client = null;
   try {

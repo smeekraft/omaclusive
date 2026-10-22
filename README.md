@@ -33,6 +33,12 @@ In an emergency call **112** (EU) or your local emergency number, or let someone
 - **TV** (and radio as a stream) only fetches the programme when someone picks a channel, straight from the address entered. The broadcaster sees the IP address of this computer. Omaclusive sends no data of its own.
 - Without a network nothing is sent. The rest keeps working.
 
+## On this computer
+
+The server listens only on `127.0.0.1`. Each start creates a new session secret and stores it so that only this user can read it (`0600`, under `$XDG_RUNTIME_DIR/omaclusive/` when that directory is private, otherwise under `~/.local/share/omaclusive/run/`). The launcher passes it to this user's browser. There is no login and no extra step for the person who presses the two buttons.
+
+Other accounts on the same computer cannot power off, reboot, open links, change the config, or run a tile action. Host and Origin checks apply to every protected route, including tile actions. Opening something, going back, the file chooser, and the hint sound use POST. A `confirm: true` field in the request does not turn the computer off: power-off, reboot, and lock run only after the server has issued a one-time confirmation for that question and the Yes tile sends it back.
+
 ## Installation
 
 ```bash
@@ -201,7 +207,7 @@ Netflix, Joyn and others are **not** part of this version. `config.json` only ha
 
 Everything works with the arrow keys or the left and right mouse button (also with one button and scanning). The arrow down key means "Next page" in lists.
 
-Start path: `start-talker.sh` starts the server on `127.0.0.1:8795`, then opens Chrome/Chromium with `--kiosk --start-fullscreen --class=omaclusive` and its own profile. `startlib.sh` checks for 20 seconds that the window really has focus (`hyprctl activewindow`) and calls `hyprctl dispatch focuswindow class:omaclusive` if not, so the keys arrive. Autostart: tick **Start at login** in the caregivers' area (see above). The mouse cursor is not needed. The page also takes the focus itself when it opens.
+Start path: `start-talker.sh` starts the server on `127.0.0.1:8795`, then opens Chrome/Chromium with `--kiosk --start-fullscreen --class=omaclusive` and its own profile. The browser receives the session secret from a private start file (see "On this computer"). `startlib.sh` checks for 20 seconds that the window really has focus (`hyprctl activewindow`) and calls `hyprctl dispatch focuswindow class:omaclusive` if not, so the keys arrive. Autostart: tick **Start at login** in the caregivers' area (see above). The mouse cursor is not needed. The page also takes the focus itself when it opens.
 Optional Hyprland key to bring it back: `bind = SUPER, O, exec, hyprctl dispatch focuswindow class:omaclusive` in `~/.config/hypr/bindings.conf`.
 
 Contacts under "I want to say something" are placeholders: Contact One, Two and Three.
@@ -365,6 +371,7 @@ python3 test_ansage.py
 python3 test_audio.py
 node test_i18n.js
 python3 test_modi.py                               # modes, path store, editor API
+python3 test_sitzung.py                            # session secret, origin checks, no GET actions
 node --experimental-websocket test_editor.js    # browser test of the editor
 python3 test_pflege.py                            # reminders and tasks
 python3 test_fernsehen.py                         # TV: channels, calm mpv call, buttons inside mpv

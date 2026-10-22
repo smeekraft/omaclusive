@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Lokaler Mini-Server fuer Omaclusive (nur 127.0.0.1, keine Cloud).
 Liefert die App aus. Standardport 8795."""
-import http.server, json, os, re, datetime, subprocess, shutil, urllib.parse, signal, threading
+import http.server, json, os, re, datetime, subprocess, shutil, urllib.parse, signal, threading, time, hmac, secrets
 import hilferuf
+import sitzung
 from i18n import tr
 DIR = os.path.dirname(os.path.abspath(__file__)); CFG = os.path.join(DIR, "config.json")
 _cfg_lock = threading.Lock()
@@ -101,13 +102,63 @@ def _hilferuf_auftrag(daten):
 def _gesehen(seit):
     return hilferuf.frage_gesehen(_kanaele_sicher(), seit)
 PORT = int(os.environ.get("PORT", 8795))
-def _lokal_ok(h):
-    """Schreibende Aufrufe nur von der eigenen Oberfläche: Host und (falls gesetzt) Origin müssen 127.0.0.1/localhost sein."""
-    erlaubt = {"127.0.0.1:%d" % PORT, "localhost:%d" % PORT}
-    host = str(h.headers.get("Host") or "").lower()
-    if host not in erlaubt: return False
-    origin = str(h.headers.get("Origin") or "")
-    return not origin or origin.lower() in {"http://" + e for e in erlaubt}
+SESSION_TOKEN = ""
+_freigaben = {}
+_freigabe_lock = threading.Lock()
+_FREIGABE_SEKUNDEN = 180
+_GET_AKTION = ("/api/open", "/api/back", "/api/pick", "/api/hinweis")
+def _pfad_normal(path):
+    """Pfad ohne . und .., damit /config.json nicht über einen Umweg erreichbar ist."""
+    roh = urllib.parse.unquote(urllib.parse.urlparse(path).path)
+    teile = []
+    for teil in roh.split("/"):
+        if teil in ("", "."):
+            continue
+        if teil == "..":
+            if teile:
+                teile.pop()
+            continue
+        teile.append(teil)
+    return "/" + "/".join(teile)
+def _geheim_gleich(a, b):
+    if not isinstance(a, str) or not isinstance(b, str):
+        return False
+    ab, bb = a.encode("utf-8"), b.encode("utf-8")
+    if len(ab) != len(bb):
+        return False
+    return hmac.compare_digest(ab, bb)
+def _freigabe_neu(name):
+    wert = secrets.token_urlsafe(18)
+    with _freigabe_lock:
+        _freigaben[name] = (wert, time.monotonic() + _FREIGABE_SEKUNDEN)
+    return wert
+def _freigabe_ok(name, wert):
+    """Einmalige Bestätigung, die der Server selbst ausgestellt hat. confirm aus der Anfrage zählt nicht."""
+    if not isinstance(wert, str) or not wert:
+        return False
+    with _freigabe_lock:
+        eintrag = _freigaben.get(name)
+        if not eintrag:
+            return False
+        erwartet, bis = eintrag
+        if time.monotonic() > bis or not _geheim_gleich(erwartet, wert):
+            return False
+        del _freigaben[name]
+        return True
+def _baustein_ausfuehren(data):
+    """confirm aus der Anfrage wird nie als Erlaubnis gewertet. Aus führt nur die passende Freigabe aus."""
+    import bausteine
+    data = data if isinstance(data, dict) else {}
+    name = str(data.get("name") or "")
+    if _freigabe_ok(name, data.get("bestaetigung")):
+        return bausteine.execute(name, True, data)
+    ergebnis = bausteine.execute(name, False, data)
+    if isinstance(ergebnis, dict) and ergebnis.get("bestaetigen"):
+        ergebnis = dict(ergebnis)
+        ergebnis["bestaetigung"] = _freigabe_neu(name)
+    return ergebnis
+def _zugang_ok(h):
+    return sitzung.zugang_ok(h.headers, PORT, SESSION_TOKEN)
 def _autostart_in_config(an):
     """Das Feld "autostart" der Config folgt dem Zustand der Datei. Schreibt nur bei Abweichung und nur, wenn es eine Config gibt."""
     if not os.path.exists(CFG): return
@@ -246,9 +297,15 @@ class H(http.server.SimpleHTTPRequestHandler):
             ziel = praxis.bild_im_stil(os.path.join(DIR, m.group(1)), m.group(2), _lade_config().get("bildstil"))
             if ziel is not None:
                 return str(ziel)
-        return super().translate_path(path)
+        ziel = super().translate_path(path)
+        echt = os.path.realpath(ziel)
+        for geheim in (os.path.realpath(CFG), os.path.realpath(CFG + ".bak")):
+            if echt == geheim:
+                return os.path.join(DIR, ".omaclusive-kein-zugriff")
+        return ziel
     def end_headers(s):
         s.send_header("Cache-Control", "no-store")
+        s.send_header("Referrer-Policy", "same-origin")
         super().end_headers()
     def j(s, obj, code=200):
         b = json.dumps(obj, ensure_ascii=False).encode()
@@ -268,42 +325,46 @@ class H(http.server.SimpleHTTPRequestHandler):
         except Exception: return None
     def do_GET(s):
         u = urllib.parse.urlparse(s.path); q = urllib.parse.parse_qs(u.query)
-        if u.path == "/api/pick": return s.j({"path": pick(q.get("folder", ["0"])[0] == "1")})
-        if u.path == "/api/open":
-            if "url" in q: launch("url", q["url"][0]); return s.j({"ok": True})
-            p = q.get("path", [""])[0]
-            if os.path.exists(p): launch("file", p); return s.j({"ok": True})
+        pfad = _pfad_normal(s.path)
+        if pfad == "/api/bereit":
+            return s.j({"ok": True})
+        if pfad in _GET_AKTION:
+            return s.j({"ok": False}, 405)
+        if pfad == "/config.json.bak":
             return s.j({"ok": False}, 404)
-        if u.path == "/api/back": back(); return s.j({"ok": True})
-        if u.path == "/api/stimmen":
+        if (pfad.startswith("/api/") or pfad == "/config.json") and not _zugang_ok(s):
+            return s.j({"ok": False}, 403)
+        if pfad == "/config.json":
+            if not os.path.isfile(CFG):
+                return s.j({"ok": False}, 404)
+            with open(CFG, "rb") as handle:
+                return s.roh(handle.read(), "application/json; charset=utf-8")
+        if pfad == "/api/stimmen":
             import stimmen
             config = _lade_config(); aktiv = stimmen.aktive_id(config)
             return s.j({"aktiv": aktiv, "job": stimmen.status(), "stimmen": [
                 {"id": v["id"], "sprache": v["sprache"], "name": v["name"], "info": v.get("info", ""), "mb": v.get("mb", 0),
                  "da": stimmen.da(v), "aktiv": v["id"] == aktiv} for v in stimmen.liste()]})
-        if u.path == "/api/hinweis":
-            import bausteine
-            return s.j({"ok": bool(bausteine.hinweis_ton())})
-        if u.path == "/api/bausteine":
+        if pfad == "/api/bausteine":
             import bausteine
             return s.j({"bausteine": bausteine.catalog(), "sprache": bausteine.engine(), "wlan": bausteine.wifi_backend()})
-        if u.path == "/api/liste":
+        if pfad == "/api/liste":
             import bausteine
             quelle = q.get("quelle", [""])[0]
             if quelle not in ("wlan.list", "bt.list"):
                 return s.j({"ok": False, "liste": []}, 404)
             return s.j({"ok": True, "quelle": quelle, "liste": bausteine.liste(quelle)})
-        if u.path == "/api/hilferuf":
+        if pfad == "/api/hilferuf":
             return s.j(_hilferuf_lokal({"art": "zustand"}))
-        if u.path == "/api/hilferuf/gesehen":
+        if pfad == "/api/hilferuf/gesehen":
             return s.j(_gesehen(q.get("since", ["0"])[0]))
-        if u.path == "/api/ordner":
+        if pfad == "/api/ordner":
             quelle = q.get("quelle", [""])[0]
             liste = _ordner_liste(quelle)
             if liste is None:
                 return s.j({"ok": False, "liste": []}, 404)
             return s.j({"ok": True, "quelle": quelle, "liste": liste})
-        if u.path == "/api/datei":
+        if pfad == "/api/datei":
             import praxis
             quelle = q.get("quelle", [""])[0]
             name = q.get("name", [""])[0]
@@ -311,55 +372,76 @@ class H(http.server.SimpleHTTPRequestHandler):
             if pfad is None:
                 return s.j({"ok": False}, 404)
             return _sende_datei(s, pfad)
-        if u.path == "/api/blatt":
+        if pfad == "/api/blatt":
             import praxis
             pdf = praxis.blatt_pdf(DIR)
             return s.roh(pdf, "application/pdf")
-        if u.path == "/api/plugins":
+        if pfad == "/api/plugins":
             import praxis
             return s.j(praxis.plugins_lesen(_plugin_wurzel()))
-        if u.path == "/api/plugin-bild":
+        if pfad == "/api/plugin-bild":
             import praxis
             pfad = praxis.plugin_datei(_plugin_wurzel(), q.get("id", [""])[0], q.get("datei", [""])[0], _lade_config().get("bildstil"))
             if pfad is None:
                 return s.j({"ok": False}, 404)
             return _sende_datei(s, pfad)
-        if u.path == "/api/autostart":
-            if not _lokal_ok(s): return s.j({"ok": False}, 403)
+        if pfad == "/api/autostart":
             import praxis
             an = praxis.autostart_aktiv(os.path.expanduser("~"))
             _autostart_in_config(an)
             return s.j({"ok": True, "an": an})
-        if u.path == "/api/medium":
-            if not _lokal_ok(s): return s.j({"ok": False}, 403)
+        if pfad == "/api/medium":
             import praxis
             pfad = praxis.datei_im_ordner("filme", q.get("name", [""])[0])
             if pfad is None: return s.j({"ok": False}, 404)
             return _sende_bereich(s, pfad)
-        if u.path in ("/api/erinnerung", "/api/aufgaben", "/api/pflege"):
-            if not _lokal_ok(s): return s.j({"ok": False}, 403)
+        if pfad in ("/api/erinnerung", "/api/aufgaben", "/api/pflege"):
             import pflege
             with _pflege_lock: daten = pflege.laden(_heim())
-            if u.path == "/api/erinnerung":
+            if pfad == "/api/erinnerung":
                 return s.j({"ok": True, "faellig": pflege.faellig(daten, datetime.datetime.now())[:1]})
-            if u.path == "/api/aufgaben":
+            if pfad == "/api/aufgaben":
                 return s.j({"ok": True, "offen": pflege.offene_aufgaben(daten)})
             return s.j({"ok": True, "erinnerungen": daten["erinnerungen"], "aufgaben": daten["aufgaben"]})
-        if u.path == "/api/film":
+        if pfad == "/api/film":
             return s.j(_film_stand())
-        if u.path == "/api/fernsehen":
+        if pfad == "/api/fernsehen":
             return s.j(_tv_stand())
-        if u.path == "/api/pfad":
+        if pfad == "/api/pfad":
             return s.j(_pfad_antwort())
-        if u.path == "/api/modi":
+        if pfad == "/api/modi":
             import modi
             c = _lade_config()
             return s.j({"ok": True, "modus": modi.modus_id(c), "modi": modi.modus_liste(c)})
         return super().do_GET()
     def do_POST(s):
+        pfad = _pfad_normal(s.path)
+        if not _zugang_ok(s):
+            s.body()
+            return s.j({"ok": False}, 403)
         data = s.body()
         if data is None: return s.j({"ok": False}, 400)
-        pfad = urllib.parse.urlparse(s.path).path
+        if pfad == "/api/open":
+            if not isinstance(data, dict): return s.j({"ok": False}, 400)
+            if "url" in data:
+                url = str(data.get("url") or "")
+                if not url.lower().startswith(("http://", "https://")): return s.j({"ok": False}, 400)
+                launch("url", url)
+                return s.j({"ok": True})
+            ziel = str(data.get("path") or "")
+            if ziel and os.path.exists(ziel):
+                launch("file", ziel)
+                return s.j({"ok": True})
+            return s.j({"ok": False}, 404)
+        if pfad == "/api/back":
+            back()
+            return s.j({"ok": True})
+        if pfad == "/api/pick":
+            ordner = bool(data.get("folder")) if isinstance(data, dict) else False
+            return s.j({"path": pick(ordner)})
+        if pfad == "/api/hinweis":
+            import bausteine
+            return s.j({"ok": bool(bausteine.hinweis_ton())})
         if pfad == "/api/hilferuf":
             if not isinstance(data, dict): return s.j({"ok": False}, 400)
             return s.j(_hilferuf_auftrag(data))
@@ -367,20 +449,17 @@ class H(http.server.SimpleHTTPRequestHandler):
             if not isinstance(data, dict): return s.j({"ok": False}, 400)
             return s.j(_film_starten(data.get("name", "")))
         if pfad == "/api/sprache":
-            if not _lokal_ok(s): return s.j({"ok": False}, 403)
             if not isinstance(data, dict) or not isinstance(data.get("id"), str): return s.j({"ok": False}, 400)
             import stimmen
             ok, grund = stimmen.starten(data["id"], _config_aendern_fn)
             return s.j({"ok": ok, "grund": grund}, 200 if ok else (409 if grund == "laeuft" else 400))
         if pfad == "/api/autostart":
-            if not _lokal_ok(s): return s.j({"ok": False}, 403)
             if not isinstance(data, dict) or not isinstance(data.get("an"), bool): return s.j({"ok": False}, 400)
             import praxis
             an = praxis.autostart_setzen(os.path.expanduser("~"), os.path.join(DIR, "start-talker.sh"), data["an"])
             _autostart_in_config(an)
             return s.j({"ok": True, "an": an})
         if pfad in ("/api/erinnerung/bestaetigen", "/api/aufgaben/abhaken", "/api/pflege"):
-            if not _lokal_ok(s): return s.j({"ok": False}, 403)
             if not isinstance(data, dict): return s.j({"ok": False}, 400)
             import pflege
             if pfad == "/api/pflege":
@@ -399,7 +478,6 @@ class H(http.server.SimpleHTTPRequestHandler):
                 _, ok = _pflege_aendern(lambda d: pflege.abhaken(d, eid))
             return s.j({"ok": bool(ok)}, 200 if ok else 404)
         if pfad in ("/api/pfad", "/api/pfad/zuruecksetzen", "/api/modus"):
-            if not _lokal_ok(s): return s.j({"ok": False, "fehler": ["nur lokal"]}, 403)
             if not isinstance(data, dict): return s.j({"ok": False}, 400)
             import modi
             if pfad == "/api/modus":
@@ -417,8 +495,7 @@ class H(http.server.SimpleHTTPRequestHandler):
             if not ergebnis.get("ok"): return s.j(ergebnis, 400)
             ergebnis.update({k: v for k, v in _pfad_antwort().items() if k in ("quelle", "screens", "start", "plugins")})
             return s.j(ergebnis)
-        if s.path == "/api/config":
-            if not _lokal_ok(s): return s.j({"ok": False}, 403)
+        if pfad == "/api/config":
             if not isinstance(data, dict): return s.j({"ok": False}, 400)
             with _cfg_lock:
                 _bewahre_kanaele(data, _lade_config())
@@ -426,20 +503,19 @@ class H(http.server.SimpleHTTPRequestHandler):
                 data["autostart"] = praxis.autostart_aktiv(os.path.expanduser("~"))
                 _schreibe_config(data)
             return s.j({"ok": True})
-        if s.path == "/api/baustein":
-            import bausteine
-            return s.j(bausteine.execute(data.get("name", ""), bool(data.get("confirm")), data))
-        if s.path == "/api/fernsehen":
-            if not _lokal_ok(s): return s.j({"ok": False}, 403)
+        if pfad == "/api/baustein":
+            return s.j(_baustein_ausfuehren(data))
+        if pfad == "/api/fernsehen":
+            if not isinstance(data, dict): return s.j({"ok": False}, 400)
             return s.j(_tv_starten(data.get("nr")))
-        if s.path == "/api/say":
+        if pfad == "/api/say":
             import bausteine
             texte = data.get("texte")
             nr = data.get("nr") if isinstance(data.get("nr"), int) and not isinstance(data.get("nr"), bool) else None
             if isinstance(texte, list):
                 return s.j({"ok": bausteine.speak([str(t) for t in texte], data.get("stimme") or "", nr)})
             return s.j({"ok": bausteine.speak(data.get("text", ""), data.get("stimme") or "", nr)})
-        if s.path == "/api/hoeren":
+        if pfad == "/api/hoeren":
             if _lade_config().get("hoeren") is not True:
                 return s.j({"ok": False, "grund": "aus", "text": ""})
             import ohr
@@ -472,7 +548,12 @@ def _sprache_vorab():
 def _hilferuf_bereit():
     try: _kanaele_sicher()
     except Exception: pass
-threading.Thread(target=_ohr_laden, daemon=True).start()
-threading.Thread(target=_sprache_vorab, daemon=True).start()
-threading.Thread(target=_hilferuf_bereit, daemon=True).start()
-http.server.ThreadingHTTPServer(("127.0.0.1", PORT), H).serve_forever()
+def main():
+    global SESSION_TOKEN
+    SESSION_TOKEN = sitzung.anlegen(PORT)
+    threading.Thread(target=_ohr_laden, daemon=True).start()
+    threading.Thread(target=_sprache_vorab, daemon=True).start()
+    threading.Thread(target=_hilferuf_bereit, daemon=True).start()
+    http.server.ThreadingHTTPServer(("127.0.0.1", PORT), H).serve_forever()
+if __name__ == "__main__":
+    main()
