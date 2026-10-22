@@ -17,6 +17,10 @@ const port = Number(process.env.PORT || 8799);
 const debugPort = Number(process.env.DEBUG_PORT || 9333);
 const page = "http://127.0.0.1:" + port + "/index.html?selftest=1";
 
+function sitzungToken() {
+  return execSync("python3 " + JSON.stringify(path.join(root, "sitzung.py")) + " lesen " + port, { encoding: "utf8" }).trim();
+}
+
 function getJson(url) {
   return new Promise((resolve, reject) => {
     const req = http.get(url, res => {
@@ -106,17 +110,21 @@ async function main() {
     "--window-size=1480,780",
     "--user-data-dir=/tmp/omaclusive-chrome-test",
     "--remote-debugging-port=" + debugPort,
-    page,
+    "about:blank",
   ], { stdio: "ignore" });
   let client = null;
   try {
     const list = await waitJson("http://127.0.0.1:" + debugPort + "/json/list");
-    const tab = list.find(item => item.webSocketDebuggerUrl && String(item.url || "").indexOf("selftest=1") !== -1) || list.find(item => item.webSocketDebuggerUrl);
+    const tab = list.find(item => item.webSocketDebuggerUrl && item.type === "page");
     if (!tab) throw new Error("keine Testseite in " + JSON.stringify(list).slice(0, 400));
     client = cdp(tab.webSocketDebuggerUrl);
     await client.opened;
     await client.send("Page.enable");
     await client.send("Runtime.enable");
+    await client.send("Network.setCookie", {
+      name: "omaclusive", value: sitzungToken(), url: "http://127.0.0.1:" + port + "/", httpOnly: true, sameSite: "Lax",
+    });
+    await client.send("Page.navigate", { url: page });
     await client.send("Emulation.setDeviceMetricsOverride", {
       width: 1480,
       height: 780,

@@ -204,6 +204,8 @@ Netflix, Joyn und andere sind in dieser Version **nicht** enthalten. In der `con
 Alles geht mit den Pfeiltasten oder der linken und rechten Maustaste (auch mit einem Knopf und Abtasten). Pfeil nach unten heißt in Listen „Weiter blättern“.
 
 Startweg: `start-talker.sh` startet den Server auf `127.0.0.1:8795` und öffnet dann Chrome/Chromium mit `--kiosk --start-fullscreen --class=omaclusive` und eigenem Profil. `startlib.sh` prüft 20 Sekunden lang, ob das Fenster wirklich den Fokus hat (`hyprctl activewindow`), und ruft sonst `hyprctl dispatch focuswindow class:omaclusive` auf, damit die Tasten ankommen. Autostart: im Betreuer-Bereich **Mit dem Rechner starten** anhaken (siehe oben). Der Mauszeiger wird nicht gebraucht. Die Seite nimmt sich beim Öffnen auch selbst den Fokus.
+
+Jeder Start legt ein neues Sitzungsgeheimnis an, in einer Datei, die nur dieses Konto lesen kann: `$XDG_RUNTIME_DIR/omaclusive/session-8795` (Ordner Modus 0700, Datei Modus 0600). Ohne Laufzeitordner liegt sie unter `~/.local/share/omaclusive/run/session-8795`. Der Starter liest die Datei und öffnet die Bildseite. Es gibt keine Anmeldung und keine zusätzliche Frage für die Person, die die zwei Knöpfe drückt. Andere Konten auf diesem Rechner können das Geheimnis nicht lesen. Sie können den Rechner nicht ausschalten oder neu starten, keinen Link und keine Datei öffnen, keinen Baustein ausführen und die Konfiguration nicht speichern. Der Browser schickt das Geheimnis als Cookie. `Host` und `Origin` müssen die eigene Seite dieses Rechners sein, auch bei `/api/baustein`. Das „Wirklich?“ auf dem Bildschirm (`confirm`) ist kein Passwort. Aktionen gehen nur per `POST`. `GET /api/open` und die anderen Aktionsadressen tun nichts.
 Optionale Hyprland-Taste, um es zurückzuholen: `bind = SUPER, O, exec, hyprctl dispatch focuswindow class:omaclusive` in `~/.config/hypr/bindings.conf`.
 
 Kontakte unter „Ich will was sagen“ sind Platzhalter: Kontakt Eins, Zwei und Drei.
@@ -254,7 +256,7 @@ Der Wechsel des Modus im Betreuer-Bereich stellt diese Zeiten ein und nimmt den 
 
 ![Der Pfad-Editor](screenshots/p3-editor.png)
 
-Im Betreuer-Bereich: **Pfad bearbeiten (Drag and Drop)** (`editor.html`). Nur auf diesem Rechner erreichbar (127.0.0.1).
+Im Betreuer-Bereich: **Pfad bearbeiten (Drag and Drop)** (`editor.html`). Nur aus dem Omaclusive-Fenster dieses Starts (127.0.0.1 und das Sitzungsgeheimnis).
 
 - Der Pfad erscheint als Baum aus Ebenen mit ihren Karten. Eine Karte am Griff ☰ an eine andere Stelle oder in eine andere Ebene ziehen.
   Ohne Maus: ▲ ▼, das Feld „Ebene“ an jeder Karte, oder eine Karte fokussieren und **Alt+Pfeil hoch/runter** drücken.
@@ -262,7 +264,7 @@ Im Betreuer-Bereich: **Pfad bearbeiten (Drag and Drop)** (`editor.html`). Nur au
 - Die Vorschau zeigt, was die Person sieht: zwei Kacheln.
 - **Speichern** schreibt deinen eigenen Pfad in eine feste Datei: `~/.config/omaclusive/pfad-<modus>.json` (oben im Editor und im Betreuer-Bereich angezeigt).
   **Zurücksetzen auf die Vorlage** löscht diese Datei, dann gilt wieder die Vorlage des Modus. `pfadDatei` in `config.json` darf einen anderen schlichten Dateinamen (ohne Ordner) im selben Ordner nennen.
-- Der Server prüft jedes Speichern: nur bekannte Aktionen, keine Kreise, höchstens 3 Ebenen, Bilder nur aus `img/`, keine Pfadtricks, am Start mindestens eine sichtbare Karte. Schreiben nimmt er nur von diesem Rechner an.
+- Der Server prüft jedes Speichern: nur bekannte Aktionen, keine Kreise, höchstens 3 Ebenen, Bilder nur aus `img/`, keine Pfadtricks, am Start mindestens eine sichtbare Karte. Schreiben nimmt er nur aus dem eigenen Omaclusive-Fenster dieses Rechners an.
 
 ## Bildschirm
 
@@ -368,6 +370,7 @@ python3 test_ansage.py
 python3 test_audio.py
 node test_i18n.js
 python3 test_modi.py                               # Modi, Pfad-Speicher, Editor-API
+python3 test_sitzung.py                            # Sitzungsgeheimnis, Herkunft, keine GET-Aktionen
 node --experimental-websocket test_editor.js    # Browser-Test des Editors
 python3 test_pflege.py                            # Erinnerungen und Aufgaben
 python3 test_fernsehen.py                         # Fernsehen: Sender, ruhiger mpv-Aufruf, Knöpfe in mpv
@@ -376,7 +379,8 @@ node --experimental-websocket test_eingabe.js   # Browser-Test mit Tastatur und 
 
 `test_bild.js` prüft die Seite in einem Browser ohne Fenster. Dafür muss der lokale Server auf einem freien Port laufen
 (`PORT=8799 python3 server.py`), und es braucht eine `config.json`. Der Selbsttest der Seite läuft auf Deutsch.
-Aufruf: `PORT=8799 node --experimental-websocket test_bild.js`. `test_eingabe.js` startet Server und Chrome selbst, drückt Pfeiltasten und klickt mit linker und
+Der Test liest die Sitzungsdatei dieses Kontos und gibt sie an die Seite weiter. Aufruf im selben Terminal wie der Server:
+`PORT=8799 node --experimental-websocket test_bild.js`. `test_eingabe.js` startet Server und Chrome selbst, drückt Pfeiltasten und klickt mit linker und
 rechter Maustaste (Einrichtung und App, Ein- und Zwei-Knopf, Deutsch und Englisch). Es legt kurz eine `config.json` an und löscht sie danach.
 
 ## Lizenz und Verhalten

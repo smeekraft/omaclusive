@@ -260,7 +260,7 @@ function hinweis() {
   const plan = window.__idle || {};
   zeigeHinweis((plan.zurueckMs || 0) - (plan.hinweisMs || 0));
   sprich(T("Gleich zurück zum Start."));
-  if (plan.hinweis === "ton" && !window.__selftest) fetch("/api/hinweis").catch(() => {});
+  if (plan.hinweis === "ton" && !window.__selftest) fetch("/api/hinweis", { method: "POST" }).catch(() => {});
 }
 
 function clearSetup() {
@@ -936,7 +936,7 @@ function erinnerungZeigen(e) {
     // Fernsehen läuft im Vollbild: aus, damit die Erinnerung zu sehen ist
     tvStopp();
     away = false;
-    if (!window.__selftest) fetch("/api/back").catch(() => {});
+    if (!window.__selftest) fetch("/api/back", { method: "POST" }).catch(() => {});
   }
   const wiederholS = Math.max(10, Math.min(600, Number(C && C.erinnerungWiederholSekunden) || 60));
   erinnerung = { id: e.id, tag: e.tag, text: e.text, zeit: e.zeit, n: 0, fortsetzen: medienPausieren() };
@@ -1068,7 +1068,7 @@ function goStart(grund) {
   frage = null;
   stack = [];
   away = false;
-  if (!window.__selftest && grund !== "still") fetch("/api/back").catch(() => {});
+  if (!window.__selftest && grund !== "still") fetch("/api/back", { method: "POST" }).catch(() => {});
   if (C && C.start) {
     index[C.start] = 0;
     zeige(C.start, { ansage: grund === "zeit" || grund === "druck" });
@@ -1570,8 +1570,12 @@ function starteSender(nr) {
 
 function oeffneZiel(wert) {
   away = true;
-  if (/^https?:/i.test(wert)) fetch("/api/open?url=" + encodeURIComponent(wert));
-  else fetch("/api/open?path=" + encodeURIComponent(wert));
+  const body = /^https?:/i.test(wert) ? { url: wert } : { path: wert };
+  fetch("/api/open", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  }).catch(() => {});
 }
 
 function run(card) {

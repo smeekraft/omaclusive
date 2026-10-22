@@ -109,8 +109,11 @@ async function lauf(sprache) {
   c.einrichtung = { fertig: true, stand: 2 }; c.modus = "b"; c.zurueck.sekunden = 0;
   fs.writeFileSync(cfgPfad, JSON.stringify(c, null, 2));
   try { fs.unlinkSync(pfadDatei); } catch (err) {}
-  const server = spawn("python3", ["server.py"], { cwd: root, env: Object.assign({}, process.env, { PORT: String(port), HOME: home, PATH: bin + ":" + process.env.PATH }), stdio: "ignore" });
-  await waitJson("http://127.0.0.1:" + port + "/config.json");
+  const xdg = path.join(home, "xdg");
+  fs.mkdirSync(xdg, { recursive: true, mode: 0o700 });
+  const server = spawn("python3", ["server.py"], { cwd: root, env: Object.assign({}, process.env, { PORT: String(port), HOME: home, XDG_RUNTIME_DIR: xdg, PATH: bin + ":" + process.env.PATH }), stdio: "ignore" });
+  await waitJson("http://127.0.0.1:" + port + "/api/bereit");
+  const token = execSync("python3 " + JSON.stringify(path.join(root, "sitzung.py")) + " lesen " + port, { encoding: "utf8", env: Object.assign({}, process.env, { XDG_RUNTIME_DIR: xdg, HOME: home }) }).trim();
   fs.rmSync("/tmp/omaclusive-chrome-editor", { recursive: true, force: true });
   const chrome = spawn(chromeBin(), ["--headless=new", "--disable-gpu", "--no-first-run", "--disable-dev-shm-usage", "--remote-allow-origins=*", "--window-size=1400,2200", "--user-data-dir=/tmp/omaclusive-chrome-editor", "--remote-debugging-port=" + debugPort, "about:blank"], { stdio: "ignore" });
   const t = sprache.toUpperCase() + " Editor";
@@ -124,6 +127,7 @@ async function lauf(sprache) {
     for (const m of ["Page.enable", "Runtime.enable", "Log.enable"]) await client.send(m);
     await client.send("Emulation.setFocusEmulationEnabled", { enabled: true });
     await client.send("Emulation.setDeviceMetricsOverride", { width: 1400, height: 2200, deviceScaleFactor: 1, mobile: false });
+    await client.send("Network.setCookie", { name: "omaclusive", value: token, url: "http://127.0.0.1:" + port + "/", httpOnly: true, sameSite: "Lax" });
     await client.send("Page.navigate", { url: "http://127.0.0.1:" + port + "/editor.html" });
     for (let i = 0; i < 60; i++) { if (await ev(client, "window.__ready === true")) break; await sleep(100); }
     await sleep(300);

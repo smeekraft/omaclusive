@@ -11,6 +11,7 @@ import tempfile
 import time
 
 import modi
+import sitzung
 
 DIR = os.path.dirname(os.path.abspath(__file__))
 PORT = int(os.environ.get("MODI_PORT", "8799"))
@@ -133,18 +134,32 @@ shutil.rmtree(basis)
 
 # ---- Live-API ----
 home = tempfile.mkdtemp(prefix="omaclusive-home-")
+runtime = os.path.join(home, "xdg")
+os.makedirs(runtime, mode=0o700)
+os.chmod(runtime, 0o700)
+os.environ["XDG_RUNTIME_DIR"] = runtime
 cfgp = os.path.join(DIR, "config.json")
 ok(not os.path.exists(cfgp), "config.json darf vorher nicht da sein")
 c = laden("config.example.json"); c["modus"] = "b"
 with open(cfgp, "w", encoding="utf-8") as h: json.dump(c, h)
-srv = subprocess.Popen([sys.executable, "server.py"], cwd=DIR, env=dict(os.environ, PORT=str(PORT), HOME=home), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+srv = subprocess.Popen([sys.executable, "server.py"], cwd=DIR, env=dict(os.environ, PORT=str(PORT), HOME=home, XDG_RUNTIME_DIR=runtime), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 try:
-    def req(methode, pfad, body=None, host=None, origin=None):
+    TOKEN = ""
+    for _ in range(60):
+        try:
+            TOKEN = sitzung.lesen(PORT)
+            break
+        except OSError:
+            time.sleep(0.1)
+    ok(bool(TOKEN), "Sitzungsdatei liegt")
+    def req(methode, pfad, body=None, host=None, origin=None, token=None, extra=None):
         for _ in range(60):
             try:
                 con = http.client.HTTPConnection("127.0.0.1", PORT, timeout=5)
                 kopf = {"Host": host or "127.0.0.1:%d" % PORT}
                 if origin: kopf["Origin"] = origin
+                if token is not False: kopf["X-Omaclusive-Token"] = TOKEN if token is None else token
+                if extra: kopf.update(extra)
                 if body is not None: kopf["Content-Type"] = "application/json"
                 con.request(methode, pfad, json.dumps(body) if body is not None else None, kopf)
                 a = con.getresponse(); t = a.read().decode()
@@ -175,6 +190,10 @@ try:
     st, r = req("POST", "/api/pfad/zuruecksetzen", {}, host="evil.example"); ok(st == 403, "Zurücksetzen nur lokal")
     st, r = req("POST", "/api/modus", {"modus": "a"}, origin="http://evil.example"); ok(st == 403, "Modus nur lokal")
     st, r = req("POST", "/api/config", {"x": 1}, host="evil.example"); ok(st == 403, "Config nur lokal")
+    st, r = req("POST", "/api/pfad", neu, token=False); ok(st == 403, "ohne Sitzung: 403")
+    st, r = req("POST", "/api/baustein", {"name": "system.poweroff", "confirm": True}, token=False); ok(st == 403, "Ausschalten ohne Sitzung: 403")
+    st, r = req("GET", "/api/open?url=https://example.org", token=False); ok(st == 403, "GET öffnen ohne Sitzung: 403")
+    st, r = req("GET", "/api/open"); ok(st == 405, "GET öffnet nichts")
     ok(not os.path.exists(os.path.join(home, ".config", "omaclusive", "pfad-evil.json")), "nichts außerhalb geschrieben")
     # Modus wechseln
     st, r = req("POST", "/api/modus", {"modus": "zzz"}); ok(st == 400, "unbekannter Modus: 400")
@@ -188,7 +207,7 @@ try:
     ok(not os.path.exists(p["datei"]), "Datei ist weg")
     # Zu große Anfrage
     con = http.client.HTTPConnection("127.0.0.1", PORT, timeout=5)
-    con.request("POST", "/api/pfad", b"x" * 10, {"Host": "127.0.0.1:%d" % PORT, "Content-Length": "5000000", "Content-Type": "application/json"})
+    con.request("POST", "/api/pfad", b"x" * 10, {"Host": "127.0.0.1:%d" % PORT, "Content-Length": "5000000", "Content-Type": "application/json", "X-Omaclusive-Token": TOKEN})
     try:
         a = con.getresponse(); ok(a.status == 400, "zu große Anfrage: 400")
     except Exception:

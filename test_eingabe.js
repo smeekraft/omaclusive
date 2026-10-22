@@ -146,13 +146,26 @@ function aufraeumen() {
 
 let server = null;
 let chrome = null;
+let sitzungToken = "";
+const xdg = path.join(home, "xdg");
+fs.mkdirSync(xdg, { mode: 0o700 });
+function sitzungLesen() {
+  const env = Object.assign({}, process.env, { XDG_RUNTIME_DIR: xdg, HOME: home });
+  return execSync("python3 " + JSON.stringify(path.join(root, "sitzung.py")) + " lesen " + port, { encoding: "utf8", env }).trim();
+}
+async function cookieSetzen(client, token) {
+  await client.send("Network.setCookie", {
+    name: "omaclusive", value: token, url: "http://127.0.0.1:" + port + "/", httpOnly: true, sameSite: "Lax",
+  });
+}
 async function startUmgebung(url) {
   server = spawn("python3", ["server.py"], {
     cwd: root,
-    env: Object.assign({}, process.env, { PORT: String(port), HOME: home, PATH: bin + ":" + process.env.PATH }),
+    env: Object.assign({}, process.env, { PORT: String(port), HOME: home, XDG_RUNTIME_DIR: xdg, PATH: bin + ":" + process.env.PATH }),
     stdio: "ignore",
   });
-  await waitJson("http://127.0.0.1:" + port + "/config.json");
+  await waitJson("http://127.0.0.1:" + port + "/api/bereit");
+  sitzungToken = sitzungLesen();
   fs.rmSync("/tmp/omaclusive-chrome-eingabe", { recursive: true, force: true });
   chrome = spawn(chromeBin(), [
     "--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check", "--disable-dev-shm-usage",
@@ -170,6 +183,7 @@ async function startUmgebung(url) {
   await client.send("Emulation.setFocusEmulationEnabled", { enabled: true });
   await client.send("Emulation.setDeviceMetricsOverride", { width: 1480, height: 780, deviceScaleFactor: 1, mobile: false });
   await client.send("Page.addScriptToEvaluateOnNewDocument", { source: "window.__ctx=[];addEventListener('contextmenu',e=>window.__ctx.push(e));" });
+  await cookieSetzen(client, sitzungToken);
   await client.send("Page.navigate", { url: "http://127.0.0.1:" + port + "/" + (url || "") });
   for (let i = 0; i < 60; i++) {
     if (await ev(client, "window.__ready === true")) break;
@@ -637,7 +651,7 @@ async function autostartSchalter(client, t, sprache) {
   const box = () => ev(client, "document.getElementById('autoBox').checked");
   // Über Node statt über die Seite: absichtlich falsche Aufrufe sollen nicht als Konsolenfehler der Seite zählen
   const api = (m, body, host) => new Promise(res => {
-    const rq = require("http").request({ host: "127.0.0.1", port, path: "/api/autostart", method: m, headers: { Host: host || ("127.0.0.1:" + port), "Content-Type": "application/json" } }, a => {
+    const rq = require("http").request({ host: "127.0.0.1", port, path: "/api/autostart", method: m, headers: { Host: host || ("127.0.0.1:" + port), "Content-Type": "application/json", "X-Omaclusive-Token": sitzungToken } }, a => {
       let d = ""; a.on("data", x => d += x); a.on("end", () => { let b = null; try { b = JSON.parse(d); } catch (err) {} res({ s: a.statusCode, b }); });
     });
     rq.on("error", () => res({ s: 0, b: null })); rq.end(body === undefined ? undefined : JSON.stringify(body));

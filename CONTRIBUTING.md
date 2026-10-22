@@ -29,13 +29,14 @@ python3 test_ansage.py
 python3 test_audio.py
 node test_i18n.js
 python3 test_modi.py
+python3 test_sitzung.py
 node --experimental-websocket test_eingabe.js
 node --experimental-websocket test_editor.js
 ```
 
 The tests need a `config.json`. For a run, `cp config.example.json config.json` is enough,
 with `"einrichtung": {"fertig": true}` and `"autostart": false`. The file is listed in `.gitignore`.
-`test_modi.py`, `test_eingabe.js` and `test_editor.js` create their own temporary `config.json` and delete it again, so remove yours before running them.
+`test_modi.py`, `test_sitzung.py`, `test_eingabe.js` and `test_editor.js` create their own temporary `config.json` and delete it again, so remove yours before running them.
 `test_modi.py` and `test_editor.js` also write to a throw-away home folder, never to yours.
 
 ## Languages

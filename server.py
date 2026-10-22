@@ -2,7 +2,7 @@
 """Lokaler Mini-Server fuer Omaclusive (nur 127.0.0.1, keine Cloud).
 Liefert die App aus. Standardport 8795."""
 import http.server, json, os, re, datetime, subprocess, shutil, urllib.parse, signal, threading
-import hilferuf
+import hilferuf, sitzung
 from i18n import tr
 DIR = os.path.dirname(os.path.abspath(__file__)); CFG = os.path.join(DIR, "config.json")
 _cfg_lock = threading.Lock()
@@ -101,13 +101,56 @@ def _hilferuf_auftrag(daten):
 def _gesehen(seit):
     return hilferuf.frage_gesehen(_kanaele_sicher(), seit)
 PORT = int(os.environ.get("PORT", 8795))
-def _lokal_ok(h):
-    """Schreibende Aufrufe nur von der eigenen Oberfläche: Host und (falls gesetzt) Origin müssen 127.0.0.1/localhost sein."""
-    erlaubt = {"127.0.0.1:%d" % PORT, "localhost:%d" % PORT}
-    host = str(h.headers.get("Host") or "").lower()
-    if host not in erlaubt: return False
+SESSION = ""
+def _hosts():
+    return {"127.0.0.1:%d" % PORT, "localhost:%d" % PORT}
+def _cookie(h, name):
+    for teil in str(h.headers.get("Cookie") or "").split(";"):
+        teil = teil.strip()
+        if "=" not in teil: continue
+        key, wert = teil.split("=", 1)
+        if key.strip() == name: return wert.strip()
+    return ""
+def _herkunft_ok(h, nur_host=False):
+    """Host muss dieser Rechner sein. Origin, Referer und Sec-Fetch-Site, falls gesetzt, auch.
+    nur_host gilt für die einmalige Übergabe aus der lokalen Startdatei (die kommt von file://)."""
+    if str(h.headers.get("Host") or "").lower() not in _hosts(): return False
+    if nur_host: return True
+    origins = {"http://" + e for e in _hosts()}
     origin = str(h.headers.get("Origin") or "")
-    return not origin or origin.lower() in {"http://" + e for e in erlaubt}
+    if origin and origin.lower() not in origins: return False
+    referer = str(h.headers.get("Referer") or "")
+    if referer:
+        u = urllib.parse.urlparse(referer)
+        if (u.scheme or "").lower() != "http" or (u.hostname or "").lower() not in {"127.0.0.1", "localhost"}: return False
+        if (u.port or 80) != PORT: return False
+    site = str(h.headers.get("Sec-Fetch-Site") or "").lower()
+    if site and site not in ("same-origin", "none"): return False
+    return True
+def _token_ok(h):
+    """Kopfzeile oder Cookie. Der Abfrage-Parameter gilt nicht: der stünde in Referer und Verläufen."""
+    got = str(h.headers.get("X-Omaclusive-Token") or "") or _cookie(h, "omaclusive")
+    return sitzung.gleich(got, SESSION)
+def _zugang(h):
+    if _herkunft_ok(h) and _token_ok(h): return True
+    h.j({"ok": False}, 403)
+    return False
+def _sende_config(s):
+    if not os.path.isfile(CFG): return s.j({"ok": False}, 404)
+    try:
+        with open(CFG, "rb") as handle: daten = handle.read()
+    except OSError:
+        return s.j({"ok": False}, 404)
+    return s.roh(daten, "application/json; charset=utf-8")
+def _sitzung_uebergeben(s, q):
+    """Einmaliger Wechsel: richtiges Geheimnis setzt das Cookie und leitet auf die Seite um, ohne das Geheimnis in der neuen Adresse."""
+    if not _herkunft_ok(s, nur_host=True) or not sitzung.gleich((q.get("k") or [""])[0], SESSION):
+        return s.j({"ok": False}, 403)
+    ziel = sitzung.sichere_seite((q.get("next") or ["/"])[0])
+    s.send_response(303)
+    s.send_header("Location", ziel)
+    s.send_header("Set-Cookie", "omaclusive=%s; HttpOnly; SameSite=Lax; Path=/" % SESSION)
+    s.end_headers()
 def _autostart_in_config(an):
     """Das Feld "autostart" der Config folgt dem Zustand der Datei. Schreibt nur bei Abweichung und nur, wenn es eine Config gibt."""
     if not os.path.exists(CFG): return
@@ -249,6 +292,10 @@ class H(http.server.SimpleHTTPRequestHandler):
         return super().translate_path(path)
     def end_headers(s):
         s.send_header("Cache-Control", "no-store")
+        s.send_header("Referrer-Policy", "no-referrer")
+        s.send_header("X-Content-Type-Options", "nosniff")
+        s.send_header("Content-Security-Policy", "frame-ancestors 'none'")
+        s.send_header("Cross-Origin-Resource-Policy", "same-origin")
         super().end_headers()
     def j(s, obj, code=200):
         b = json.dumps(obj, ensure_ascii=False).encode()
@@ -268,22 +315,23 @@ class H(http.server.SimpleHTTPRequestHandler):
         except Exception: return None
     def do_GET(s):
         u = urllib.parse.urlparse(s.path); q = urllib.parse.parse_qs(u.query)
-        if u.path == "/api/pick": return s.j({"path": pick(q.get("folder", ["0"])[0] == "1")})
-        if u.path == "/api/open":
-            if "url" in q: launch("url", q["url"][0]); return s.j({"ok": True})
-            p = q.get("path", [""])[0]
-            if os.path.exists(p): launch("file", p); return s.j({"ok": True})
-            return s.j({"ok": False}, 404)
-        if u.path == "/api/back": back(); return s.j({"ok": True})
+        if u.path == "/api/bereit":
+            if not _herkunft_ok(s): return s.j({"ok": False}, 403)
+            return s.j({"ok": True})
+        if u.path == "/api/sitzung": return _sitzung_uebergeben(s, q)
+        if u.path.startswith("/api/") or u.path in ("/config.json", "/config.json.bak"):
+            if not _zugang(s): return
+        if u.path == "/config.json.bak": return s.j({"ok": False}, 404)
+        if u.path == "/config.json": return _sende_config(s)
+        # Aktionen nur per POST. GET bleibt lesend, auch mit gültiger Sitzung.
+        if u.path in ("/api/open", "/api/back", "/api/pick", "/api/hinweis", "/api/baustein"):
+            return s.j({"ok": False}, 405)
         if u.path == "/api/stimmen":
             import stimmen
             config = _lade_config(); aktiv = stimmen.aktive_id(config)
             return s.j({"aktiv": aktiv, "job": stimmen.status(), "stimmen": [
                 {"id": v["id"], "sprache": v["sprache"], "name": v["name"], "info": v.get("info", ""), "mb": v.get("mb", 0),
                  "da": stimmen.da(v), "aktiv": v["id"] == aktiv} for v in stimmen.liste()]})
-        if u.path == "/api/hinweis":
-            import bausteine
-            return s.j({"ok": bool(bausteine.hinweis_ton())})
         if u.path == "/api/bausteine":
             import bausteine
             return s.j({"bausteine": bausteine.catalog(), "sprache": bausteine.engine(), "wlan": bausteine.wifi_backend()})
@@ -325,19 +373,16 @@ class H(http.server.SimpleHTTPRequestHandler):
                 return s.j({"ok": False}, 404)
             return _sende_datei(s, pfad)
         if u.path == "/api/autostart":
-            if not _lokal_ok(s): return s.j({"ok": False}, 403)
             import praxis
             an = praxis.autostart_aktiv(os.path.expanduser("~"))
             _autostart_in_config(an)
             return s.j({"ok": True, "an": an})
         if u.path == "/api/medium":
-            if not _lokal_ok(s): return s.j({"ok": False}, 403)
             import praxis
             pfad = praxis.datei_im_ordner("filme", q.get("name", [""])[0])
             if pfad is None: return s.j({"ok": False}, 404)
             return _sende_bereich(s, pfad)
         if u.path in ("/api/erinnerung", "/api/aufgaben", "/api/pflege"):
-            if not _lokal_ok(s): return s.j({"ok": False}, 403)
             import pflege
             with _pflege_lock: daten = pflege.laden(_heim())
             if u.path == "/api/erinnerung":
@@ -357,9 +402,27 @@ class H(http.server.SimpleHTTPRequestHandler):
             return s.j({"ok": True, "modus": modi.modus_id(c), "modi": modi.modus_liste(c)})
         return super().do_GET()
     def do_POST(s):
+        if not _zugang(s): return
         data = s.body()
         if data is None: return s.j({"ok": False}, 400)
+        if not isinstance(data, dict): return s.j({"ok": False}, 400)
         pfad = urllib.parse.urlparse(s.path).path
+        if pfad == "/api/back":
+            back(); return s.j({"ok": True})
+        if pfad == "/api/hinweis":
+            import bausteine
+            return s.j({"ok": bool(bausteine.hinweis_ton())})
+        if pfad == "/api/pick":
+            return s.j({"path": pick(data.get("folder") is True)})
+        if pfad == "/api/open":
+            url = data.get("url")
+            if url is not None:
+                url = str(url)
+                if not re.match(r"https?://", url, re.I): return s.j({"ok": False}, 400)
+                launch("url", url); return s.j({"ok": True})
+            p = str(data.get("path") or "")
+            if p and os.path.exists(p): launch("file", p); return s.j({"ok": True})
+            return s.j({"ok": False}, 404)
         if pfad == "/api/hilferuf":
             if not isinstance(data, dict): return s.j({"ok": False}, 400)
             return s.j(_hilferuf_auftrag(data))
@@ -367,20 +430,17 @@ class H(http.server.SimpleHTTPRequestHandler):
             if not isinstance(data, dict): return s.j({"ok": False}, 400)
             return s.j(_film_starten(data.get("name", "")))
         if pfad == "/api/sprache":
-            if not _lokal_ok(s): return s.j({"ok": False}, 403)
             if not isinstance(data, dict) or not isinstance(data.get("id"), str): return s.j({"ok": False}, 400)
             import stimmen
             ok, grund = stimmen.starten(data["id"], _config_aendern_fn)
             return s.j({"ok": ok, "grund": grund}, 200 if ok else (409 if grund == "laeuft" else 400))
         if pfad == "/api/autostart":
-            if not _lokal_ok(s): return s.j({"ok": False}, 403)
             if not isinstance(data, dict) or not isinstance(data.get("an"), bool): return s.j({"ok": False}, 400)
             import praxis
             an = praxis.autostart_setzen(os.path.expanduser("~"), os.path.join(DIR, "start-talker.sh"), data["an"])
             _autostart_in_config(an)
             return s.j({"ok": True, "an": an})
         if pfad in ("/api/erinnerung/bestaetigen", "/api/aufgaben/abhaken", "/api/pflege"):
-            if not _lokal_ok(s): return s.j({"ok": False}, 403)
             if not isinstance(data, dict): return s.j({"ok": False}, 400)
             import pflege
             if pfad == "/api/pflege":
@@ -399,7 +459,6 @@ class H(http.server.SimpleHTTPRequestHandler):
                 _, ok = _pflege_aendern(lambda d: pflege.abhaken(d, eid))
             return s.j({"ok": bool(ok)}, 200 if ok else 404)
         if pfad in ("/api/pfad", "/api/pfad/zuruecksetzen", "/api/modus"):
-            if not _lokal_ok(s): return s.j({"ok": False, "fehler": ["nur lokal"]}, 403)
             if not isinstance(data, dict): return s.j({"ok": False}, 400)
             import modi
             if pfad == "/api/modus":
@@ -418,7 +477,6 @@ class H(http.server.SimpleHTTPRequestHandler):
             ergebnis.update({k: v for k, v in _pfad_antwort().items() if k in ("quelle", "screens", "start", "plugins")})
             return s.j(ergebnis)
         if s.path == "/api/config":
-            if not _lokal_ok(s): return s.j({"ok": False}, 403)
             if not isinstance(data, dict): return s.j({"ok": False}, 400)
             with _cfg_lock:
                 _bewahre_kanaele(data, _lade_config())
@@ -427,10 +485,11 @@ class H(http.server.SimpleHTTPRequestHandler):
                 _schreibe_config(data)
             return s.j({"ok": True})
         if s.path == "/api/baustein":
+            # confirm ist nur die Rückfrage auf dem Bildschirm, kein Passwort.
+            # Ohne Sitzungsgeheimnis (_zugang) endet der Aufruf vorher mit 403.
             import bausteine
             return s.j(bausteine.execute(data.get("name", ""), bool(data.get("confirm")), data))
         if s.path == "/api/fernsehen":
-            if not _lokal_ok(s): return s.j({"ok": False}, 403)
             return s.j(_tv_starten(data.get("nr")))
         if s.path == "/api/say":
             import bausteine
@@ -475,4 +534,10 @@ def _hilferuf_bereit():
 threading.Thread(target=_ohr_laden, daemon=True).start()
 threading.Thread(target=_sprache_vorab, daemon=True).start()
 threading.Thread(target=_hilferuf_bereit, daemon=True).start()
+SESSION = sitzung.anlegen(PORT)
+for _privat in (CFG, CFG + ".bak"):
+    try:
+        if os.path.isfile(_privat) and not os.path.islink(_privat): os.chmod(_privat, 0o600)
+    except OSError:
+        pass
 http.server.ThreadingHTTPServer(("127.0.0.1", PORT), H).serve_forever()

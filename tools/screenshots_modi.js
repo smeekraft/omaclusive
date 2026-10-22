@@ -96,8 +96,11 @@ async function lauf(sprache, praefix) {
   const c = JSON.parse(fs.readFileSync(path.join(root, sprache === "en" ? "config.example.en.json" : "config.example.json"), "utf8"));
   c.hilferuf.testTage = 0;
   fs.writeFileSync(cfgPfad, JSON.stringify(c, null, 2));
-  const server = spawn("python3", ["server.py"], { cwd: root, env: Object.assign({}, process.env, { PORT: String(port), HOME: home, PATH: bin + ":" + process.env.PATH }), stdio: "ignore" });
-  await waitJson("http://127.0.0.1:" + port + "/config.json");
+  const xdg = path.join(home, "xdg");
+  fs.mkdirSync(xdg, { recursive: true, mode: 0o700 });
+  const server = spawn("python3", ["server.py"], { cwd: root, env: Object.assign({}, process.env, { PORT: String(port), HOME: home, XDG_RUNTIME_DIR: xdg, PATH: bin + ":" + process.env.PATH }), stdio: "ignore" });
+  await waitJson("http://127.0.0.1:" + port + "/api/bereit");
+  const token = execSync("python3 " + JSON.stringify(path.join(root, "sitzung.py")) + " lesen " + port, { encoding: "utf8", env: Object.assign({}, process.env, { XDG_RUNTIME_DIR: xdg, HOME: home }) }).trim();
   fs.rmSync("/tmp/omaclusive-chrome-shots", { recursive: true, force: true });
   const chrome = spawn(chromeBin(), ["--headless=new", "--disable-gpu", "--no-first-run", "--disable-dev-shm-usage", "--remote-allow-origins=*", "--window-size=1480,780", "--user-data-dir=/tmp/omaclusive-chrome-shots", "--remote-debugging-port=" + debugPort, "about:blank"], { stdio: "ignore" });
   let client = null;
@@ -106,6 +109,7 @@ async function lauf(sprache, praefix) {
     client = cdp(list.find(i => i.type === "page").webSocketDebuggerUrl, []);
     await client.opened;
     for (const m of ["Page.enable", "Runtime.enable"]) await client.send(m);
+    await client.send("Network.setCookie", { name: "omaclusive", value: token, url: "http://127.0.0.1:" + port + "/", httpOnly: true, sameSite: "Lax" });
     const shot = async (name, w, h) => {
       await client.send("Emulation.setDeviceMetricsOverride", { width: w || 1480, height: h || 780, deviceScaleFactor: 1, mobile: false });
       await sleep(250);
