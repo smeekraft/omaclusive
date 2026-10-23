@@ -8,6 +8,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { spawn, execSync } = require("child_process");
+const { token } = require("./tools/token.js");
 
 const root = __dirname;
 const port = Number(process.env.PORT || 8798);
@@ -146,13 +147,15 @@ function aufraeumen() {
 
 let server = null;
 let chrome = null;
+let sitzungToken = "";
 async function startUmgebung(url) {
   server = spawn("python3", ["server.py"], {
     cwd: root,
     env: Object.assign({}, process.env, { PORT: String(port), HOME: home, PATH: bin + ":" + process.env.PATH }),
     stdio: "ignore",
   });
-  await waitJson("http://127.0.0.1:" + port + "/config.json");
+  await waitJson("http://127.0.0.1:" + port + "/api/bereit");
+  sitzungToken = token(port, home, root);
   fs.rmSync("/tmp/omaclusive-chrome-eingabe", { recursive: true, force: true });
   chrome = spawn(chromeBin(), [
     "--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check", "--disable-dev-shm-usage",
@@ -170,7 +173,7 @@ async function startUmgebung(url) {
   await client.send("Emulation.setFocusEmulationEnabled", { enabled: true });
   await client.send("Emulation.setDeviceMetricsOverride", { width: 1480, height: 780, deviceScaleFactor: 1, mobile: false });
   await client.send("Page.addScriptToEvaluateOnNewDocument", { source: "window.__ctx=[];addEventListener('contextmenu',e=>window.__ctx.push(e));" });
-  await client.send("Page.navigate", { url: "http://127.0.0.1:" + port + "/" + (url || "") });
+  await client.send("Page.navigate", { url: "http://127.0.0.1:" + port + "/" + (url || "") + "#" + sitzungToken });
   for (let i = 0; i < 60; i++) {
     if (await ev(client, "window.__ready === true")) break;
     await sleep(100);
@@ -637,7 +640,7 @@ async function autostartSchalter(client, t, sprache) {
   const box = () => ev(client, "document.getElementById('autoBox').checked");
   // Über Node statt über die Seite: absichtlich falsche Aufrufe sollen nicht als Konsolenfehler der Seite zählen
   const api = (m, body, host) => new Promise(res => {
-    const rq = require("http").request({ host: "127.0.0.1", port, path: "/api/autostart", method: m, headers: { Host: host || ("127.0.0.1:" + port), "Content-Type": "application/json" } }, a => {
+    const rq = require("http").request({ host: "127.0.0.1", port, path: "/api/autostart", method: m, headers: { Host: host || ("127.0.0.1:" + port), "Content-Type": "application/json", "X-Omaclusive-Token": sitzungToken } }, a => {
       let d = ""; a.on("data", x => d += x); a.on("end", () => { let b = null; try { b = JSON.parse(d); } catch (err) {} res({ s: a.statusCode, b }); });
     });
     rq.on("error", () => res({ s: 0, b: null })); rq.end(body === undefined ? undefined : JSON.stringify(body));

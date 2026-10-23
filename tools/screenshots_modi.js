@@ -6,6 +6,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { spawn, execSync } = require("child_process");
+const { token } = require("./token.js");
 
 const root = path.resolve(__dirname, "..");
 const port = Number(process.env.PORT || 8794);
@@ -97,7 +98,8 @@ async function lauf(sprache, praefix) {
   c.hilferuf.testTage = 0;
   fs.writeFileSync(cfgPfad, JSON.stringify(c, null, 2));
   const server = spawn("python3", ["server.py"], { cwd: root, env: Object.assign({}, process.env, { PORT: String(port), HOME: home, PATH: bin + ":" + process.env.PATH }), stdio: "ignore" });
-  await waitJson("http://127.0.0.1:" + port + "/config.json");
+  await waitJson("http://127.0.0.1:" + port + "/api/bereit");
+  const geheim = token(port, home, root);
   fs.rmSync("/tmp/omaclusive-chrome-shots", { recursive: true, force: true });
   const chrome = spawn(chromeBin(), ["--headless=new", "--disable-gpu", "--no-first-run", "--disable-dev-shm-usage", "--remote-allow-origins=*", "--window-size=1480,780", "--user-data-dir=/tmp/omaclusive-chrome-shots", "--remote-debugging-port=" + debugPort, "about:blank"], { stdio: "ignore" });
   let client = null;
@@ -112,7 +114,7 @@ async function lauf(sprache, praefix) {
       const img = await client.send("Page.captureScreenshot", { format: "png" });
       fs.writeFileSync(path.join(root, "screenshots", praefix + name + ".png"), Buffer.from(img.data, "base64"));
     };
-    const gehe = async url => { await client.send("Page.navigate", { url: "http://127.0.0.1:" + port + "/" + url }); for (let i = 0; i < 60; i++) { if (await ev(client, "window.__ready === true")) break; await sleep(100); } await sleep(500); };
+    const gehe = async url => { await client.send("Page.navigate", { url: "http://127.0.0.1:" + port + "/" + url + "#" + geheim }); for (let i = 0; i < 60; i++) { if (await ev(client, "window.__ready === true")) break; await sleep(100); } await sleep(500); };
     const klick = async (x, y) => { await client.send("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", buttons: 1, clickCount: 1 }); await client.send("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", buttons: 0, clickCount: 1 }); await sleep(500); };
     await gehe("");
     await shot("einrichtung-1-bedienung");

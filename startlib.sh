@@ -28,12 +28,43 @@ omaclusive_alte_beenden() {
   done
 }
 
+# Gleicher Ordner wie sitzung.py: privates Laufzeitverzeichnis, sonst der Ordner run im eigenen Home.
+omaclusive_sitzung_ordner() {
+  local runtime="${XDG_RUNTIME_DIR:-}" mode owner last
+  if [ -n "$runtime" ] && [ -d "$runtime" ] && [ ! -L "$runtime" ]; then
+    mode="$(stat -c '%a' "$runtime" 2>/dev/null || true)"
+    owner="$(stat -c '%u' "$runtime" 2>/dev/null || true)"
+    case "$mode" in
+      *[!0-9]*) mode="" ;;
+    esac
+    if [ "$owner" = "$(id -u)" ] && [ -n "$mode" ]; then
+      last="${mode: -2}"
+      if [ "$last" = "00" ]; then
+        printf '%s/omaclusive' "$runtime"
+        return 0
+      fi
+    fi
+  fi
+  printf '%s/.local/share/omaclusive/run' "$HOME"
+}
+
+# Schreibt die Startseite (Modus 0600) und gibt ihre file-Adresse aus. Das Geheimnis steht nicht in der Befehlszeile.
+omaclusive_boot() {
+  local dir="$1" port="$2" seite="$3"
+  DIR="$dir" PORT="$port" SEITE="$seite" python3 - <<'PY'
+import os, sys
+sys.path.insert(0, os.environ["DIR"])
+import sitzung
+print(sitzung.boot_url(int(os.environ["PORT"]), os.environ.get("SEITE") or ""), end="")
+PY
+}
+
 omaclusive_server_starten() {
   local dir="$1" port="$2" i
   mkdir -p "${HOME}/.local/share/omaclusive"
   PORT="$port" nohup python3 "${dir}/server.py" >>"${HOME}/.local/share/omaclusive/server.log" 2>&1 &
   for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
-    curl -s -o /dev/null --max-time 1 "http://127.0.0.1:${port}/config.json" && return 0
+    curl -sf -o /dev/null --max-time 1 "http://127.0.0.1:${port}/api/bereit" && return 0
     sleep 0.25
   done
   echo "Omaclusive-Server startet nicht. Siehe ~/.local/share/omaclusive/server.log" >&2

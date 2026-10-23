@@ -33,6 +33,12 @@ Im Notfall **112** anrufen oder anrufen lassen. Verlass dich dafür nicht auf Om
 - **Fernsehen** (und Radio als Stream) holt das Programm erst, wenn jemand einen Sender wählt, direkt beim eingetragenen Sender. Der Sender sieht dabei die IP-Adresse dieses Rechners. Omaclusive schickt keine eigenen Daten mit.
 - Ohne Netz wird nichts gesendet. Der Rest funktioniert weiter.
 
+## Auf diesem Rechner
+
+Der Server hört nur auf `127.0.0.1`. Jeder Start erzeugt ein neues Sitzungsgeheimnis und speichert es so, dass nur dieser Benutzer es lesen kann (`0600`, unter `$XDG_RUNTIME_DIR/omaclusive/`, wenn dieses Verzeichnis privat ist, sonst unter `~/.local/share/omaclusive/run/`). Der Starter gibt es an den Browser dieses Benutzers. Es gibt keine Anmeldung und keinen zusätzlichen Schritt für die Person, die die zwei Knöpfe drückt.
+
+Andere Konten auf demselben Rechner können nicht ausschalten, neu starten, Links öffnen, die Konfiguration ändern oder eine Kachel-Aktion ausführen. Die Prüfung von Host und Origin gilt für jeden geschützten Weg, auch für Kachel-Aktionen. Öffnen, Zurück, die Dateiauswahl und der Hinweiston gehen über POST. Ein Feld `confirm: true` in der Anfrage schaltet den Rechner nicht aus: Ausschalten, Neustart und Sperren laufen erst, wenn der Server für diese Frage eine einmalige Bestätigung ausgestellt hat und die Ja-Kachel sie zurückschickt.
+
 ## Installation
 
 ```bash
@@ -203,7 +209,7 @@ Netflix, Joyn und andere sind in dieser Version **nicht** enthalten. In der `con
 
 Alles geht mit den Pfeiltasten oder der linken und rechten Maustaste (auch mit einem Knopf und Abtasten). Pfeil nach unten heißt in Listen „Weiter blättern“.
 
-Startweg: `start-talker.sh` startet den Server auf `127.0.0.1:8795` und öffnet dann Chrome/Chromium mit `--kiosk --start-fullscreen --class=omaclusive` und eigenem Profil. `startlib.sh` prüft 20 Sekunden lang, ob das Fenster wirklich den Fokus hat (`hyprctl activewindow`), und ruft sonst `hyprctl dispatch focuswindow class:omaclusive` auf, damit die Tasten ankommen. Autostart: im Betreuer-Bereich **Mit dem Rechner starten** anhaken (siehe oben). Der Mauszeiger wird nicht gebraucht. Die Seite nimmt sich beim Öffnen auch selbst den Fokus.
+Startweg: `start-talker.sh` startet den Server auf `127.0.0.1:8795` und öffnet dann Chrome/Chromium mit `--kiosk --start-fullscreen --class=omaclusive` und eigenem Profil. Der Browser bekommt das Sitzungsgeheimnis aus einer privaten Startdatei (siehe „Auf diesem Rechner“). `startlib.sh` prüft 20 Sekunden lang, ob das Fenster wirklich den Fokus hat (`hyprctl activewindow`), und ruft sonst `hyprctl dispatch focuswindow class:omaclusive` auf, damit die Tasten ankommen. Autostart: im Betreuer-Bereich **Mit dem Rechner starten** anhaken (siehe oben). Der Mauszeiger wird nicht gebraucht. Die Seite nimmt sich beim Öffnen auch selbst den Fokus.
 Optionale Hyprland-Taste, um es zurückzuholen: `bind = SUPER, O, exec, hyprctl dispatch focuswindow class:omaclusive` in `~/.config/hypr/bindings.conf`.
 
 Kontakte unter „Ich will was sagen“ sind Platzhalter: Kontakt Eins, Zwei und Drei.
@@ -368,6 +374,7 @@ python3 test_ansage.py
 python3 test_audio.py
 node test_i18n.js
 python3 test_modi.py                               # Modi, Pfad-Speicher, Editor-API
+python3 test_sitzung.py                            # Sitzungsgeheimnis, Herkunft, keine GET-Aktionen
 node --experimental-websocket test_editor.js    # Browser-Test des Editors
 python3 test_pflege.py                            # Erinnerungen und Aufgaben
 python3 test_fernsehen.py                         # Fernsehen: Sender, ruhiger mpv-Aufruf, Knöpfe in mpv
