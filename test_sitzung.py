@@ -47,6 +47,38 @@ def logtext(pfad):
         return handle.read()
 
 
+def server_umgebung(prozess):
+    """Umgebung, nachdem server.py wirklich ausgeführt wird.
+
+    Popen kehrt zurück, sobald exec beginnt. Bis der Kern die neue
+    Prozessumgebung veröffentlicht, ist /proc/<pid>/environ leer oder zeigt
+    noch die Umgebung des Elternprozesses. Beides hat den PATH der Attrappen nicht.
+    Eine zweite, gleiche Lesung schließt eine zerrissene Zwischensicht aus.
+    """
+    ende = time.monotonic() + 5
+    vorher = None
+    while True:
+        if prozess.poll() is not None:
+            ok(False, "Serverprozess endete vor der Umgebungsprüfung")
+        try:
+            with open("/proc/%d/cmdline" % prozess.pid, "rb") as handle:
+                befehl = handle.read().split(b"\0")
+            with open("/proc/%d/environ" % prozess.pid, "rb") as handle:
+                roh = handle.read()
+        except OSError:
+            befehl, roh = [], b""
+        # PATH muss als eigener Eintrag dastehen, nicht nur irgendwo im Text.
+        if b"server.py" in befehl and b"\0PATH=" in b"\0" + roh:
+            if roh == vorher:
+                return dict(teil.split(b"=", 1) for teil in roh.split(b"\0") if b"=" in teil)
+            vorher = roh
+        else:
+            vorher = None
+        if time.monotonic() >= ende:
+            ok(False, "Serverumgebung wurde nicht sichtbar")
+        time.sleep(0.005)
+
+
 def anfrage(port, methode, pfad, body=None, token=None, host=None, origin=None, extra=None):
     con = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
     kopf = {"Host": host or ("127.0.0.1:%d" % port)}
@@ -127,8 +159,7 @@ def main():
     env.update(PORT=str(port), HOME=home, PATH=bin_dir + os.pathsep + env.get("PATH", ""), OMACLUSIVE_CMDLOG=protokoll)
     srv = subprocess.Popen([sys.executable, "server.py"], cwd=DIR, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
-        roh = open("/proc/%d/environ" % srv.pid, "rb").read()
-        kinder = dict(teil.split(b"=", 1) for teil in roh.split(b"\0") if b"=" in teil)
+        kinder = server_umgebung(srv)
         ok(kinder.get(b"PATH", b"").split(b":")[0] == bin_dir.encode(), "Server benutzt die Attrappen")
         alt_xdg = os.environ.pop("XDG_RUNTIME_DIR", None)
         geheim = None
