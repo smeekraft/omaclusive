@@ -35,7 +35,7 @@ Im Notfall **112** anrufen oder anrufen lassen. Verlass dich dafür nicht auf Om
 
 ## Auf diesem Rechner
 
-Der Server hört nur auf `127.0.0.1`. Jeder Start erzeugt ein neues Sitzungsgeheimnis und speichert es so, dass nur dieser Benutzer es lesen kann (`0600`, unter `$XDG_RUNTIME_DIR/omaclusive/`, wenn dieses Verzeichnis privat ist, sonst unter `~/.local/share/omaclusive/run/`). Der Starter gibt es an den Browser dieses Benutzers. Es gibt keine Anmeldung und keinen zusätzlichen Schritt für die Person, die die zwei Knöpfe drückt.
+Der Server hört nur auf `127.0.0.1`. Jeder Start erzeugt ein neues Sitzungsgeheimnis und speichert es so, dass nur dieser Benutzer es lesen kann (Datei `0600` in einem Ordner `0700`: unter `$XDG_RUNTIME_DIR/omaclusive/`, wenn dieses Verzeichnis privat ist und nicht in dem Ordner liegt, den der Server ausliefert, sonst unter `~/.local/state/omaclusive/run/`). Es liegt nie unter der Web-Wurzel, auch nicht unter `~/.local/share/omaclusive/`. Der Starter gibt es an den Browser dieses Benutzers. Es gibt keine Anmeldung und keinen zusätzlichen Schritt für die Person, die die zwei Knöpfe drückt.
 
 Andere Konten auf demselben Rechner können nicht ausschalten, neu starten, Links öffnen, die Konfiguration ändern oder eine Kachel-Aktion ausführen. Die Prüfung von Host und Origin gilt für jeden geschützten Weg, auch für Kachel-Aktionen. Öffnen, Zurück, die Dateiauswahl und der Hinweiston gehen über POST. Ein Feld `confirm: true` in der Anfrage schaltet den Rechner nicht aus: Ausschalten, Neustart und Sperren laufen erst, wenn der Server für diese Frage eine einmalige Bestätigung ausgestellt hat und die Ja-Kachel sie zurückschickt.
 
