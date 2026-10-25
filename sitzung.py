@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 """Sitzungsgeheimnis für den lokalen Omaclusive-Server.
 
-Das Geheimnis entsteht beim Start und liegt in einer Datei mit Modus 0600.
-Andere Benutzerkonten auf demselben Rechner können sie nicht lesen.
-Der Starter liest sie und gibt sie nur dem Browser dieses Benutzers.
+Das Geheimnis entsteht beim Start und liegt in einer Datei mit Modus 0600
+in einem Ordner mit Modus 0700. Andere Benutzerkonten auf demselben Rechner
+können sie nicht lesen. Der Ordner ist das private Laufzeitverzeichnis,
+wenn das privat ist und der Webserver es nicht ausliefert. Sonst ein
+privater Ordner außerhalb der Web-Wurzel (normalerweise
+~/.local/state/omaclusive/run/, nie ~/.local/share/omaclusive/run/).
+Der Starter liest die Datei und gibt das Geheimnis nur dem Browser
+dieses Benutzers.
 """
 import hmac
 import os
@@ -37,27 +42,88 @@ def runtime_privat(pfad):
     return stat.S_IMODE(st.st_mode) & 0o077 == 0
 
 
+def programm_ordner():
+    """Ordner von server.py. Den liefert der lokale Server als statische Dateien aus."""
+    return os.path.realpath(os.path.dirname(os.path.abspath(__file__)))
+
+
+def liegt_in(pfad, wurzel):
+    """True, wenn pfad die Wurzel selbst ist oder darunter liegt."""
+    if not pfad or not wurzel:
+        return False
+    try:
+        basis = os.path.realpath(wurzel)
+        ziel = os.path.realpath(pfad)
+    except (OSError, ValueError):
+        return False
+    if not basis or not ziel:
+        return False
+    try:
+        return os.path.commonpath([basis, ziel]) == basis
+    except ValueError:
+        return False
+
+
+def _web_wurzeln(home):
+    # Installierte Kopie und der Ordner, aus dem dieser Prozess läuft.
+    return (
+        programm_ordner(),
+        os.path.join(home, ".local", "share", "omaclusive"),
+    )
+
+
+def _ungeeignet(pfad, home):
+    """True, wenn der Ordner von der Web-Wurzel ausgeliefert würde oder sie enthält."""
+    for wurzel in _web_wurzeln(home):
+        if liegt_in(pfad, wurzel) or liegt_in(wurzel, pfad):
+            return True
+    return False
+
+
 def ordner(home=None):
+    """Privater Ordner für das Sitzungsgeheimnis, nie unter der Web-Wurzel."""
+    home = home or os.path.expanduser("~")
     runtime = os.environ.get("XDG_RUNTIME_DIR", "")
     if runtime_privat(runtime):
-        return os.path.join(runtime, "omaclusive")
-    basis = home or os.path.expanduser("~")
-    return os.path.join(basis, ".local", "share", "omaclusive", "run")
+        ziel = os.path.join(runtime, "omaclusive")
+        if not _ungeeignet(ziel, home):
+            return ziel
+    for ziel in (
+        os.path.join(home, ".local", "state", "omaclusive", "run"),
+        os.path.join(home, ".omaclusive-private", "run"),
+        os.path.join("/tmp", "omaclusive-%d" % os.getuid(), "run"),
+    ):
+        if not _ungeeignet(ziel, home):
+            return ziel
+    raise OSError("kein privater Sitzungsordner außerhalb der Web-Wurzel")
 
 
 def datei(port, home=None):
     return os.path.join(ordner(home), "%d.session" % int(port))
 
 
-def _schreiben(pfad, inhalt):
-    """Schreibt eine neue Datei mit Modus 0600 und folgt keinem Verweis."""
-    ziel = os.path.dirname(pfad)
+def _ordner_sicher(ziel):
+    """Legt den Ordner mit Modus 0700 an und folgt keinem Verweis."""
     if os.path.lexists(ziel) and os.path.islink(ziel):
         raise OSError("Sitzungsordner ist ein Verweis")
     os.makedirs(ziel, mode=0o700, exist_ok=True)
     if os.path.islink(ziel) or not os.path.isdir(ziel):
         raise OSError("Sitzungsordner ist kein Verzeichnis")
     os.chmod(ziel, 0o700)
+    st = os.lstat(ziel)
+    if stat.S_ISLNK(st.st_mode) or not stat.S_ISDIR(st.st_mode):
+        raise OSError("Sitzungsordner ist kein Verzeichnis")
+    if st.st_uid != os.getuid() or stat.S_IMODE(st.st_mode) & 0o077:
+        raise OSError("Sitzungsordner wäre für andere zugänglich")
+
+
+def _schreiben(pfad, inhalt, home=None):
+    """Schreibt eine neue Datei mit Modus 0600 und folgt keinem Verweis."""
+    home = home or os.path.expanduser("~")
+    ziel = os.path.dirname(pfad)
+    if _ungeeignet(ziel, home):
+        raise OSError("Sitzungsordner liegt in der Web-Wurzel")
+    _ordner_sicher(ziel)
     flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
@@ -79,7 +145,7 @@ def _schreiben(pfad, inhalt):
 def anlegen(port, home=None):
     import secrets
     token = secrets.token_urlsafe(32)
-    _schreiben(datei(port, home), token + "\n")
+    _schreiben(datei(port, home), token + "\n", home)
     return token
 
 
@@ -113,7 +179,7 @@ def boot_schreiben(port, seite, home=None):
         "location.replace(\"http://127.0.0.1:%d/%s#%s\");</script>\n"
         % (int(port), seite, token)
     )
-    _schreiben(pfad, html)
+    _schreiben(pfad, html, home)
     return pfad
 
 

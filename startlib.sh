@@ -28,9 +28,42 @@ omaclusive_alte_beenden() {
   done
 }
 
-# Gleicher Ordner wie sitzung.py: privates Laufzeitverzeichnis, sonst der Ordner run im eigenen Home.
+# Ordner von server.py. Absichtlich beim Laden: BASH_SOURCE zeigt hier auf diese Datei,
+# und die Subshell wechselt nicht das Verzeichnis des Aufrufers.
+_omaclusive_programm="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+
+# Rückgabe 0, wenn ziel die Wurzel selbst ist oder darunter liegt.
+omaclusive_liegt_in() {
+  local ziel="$1" wurzel="$2" z w
+  [ -n "$ziel" ] && [ -n "$wurzel" ] || return 1
+  z=$(realpath -m -- "$ziel") || return 1
+  w=$(realpath -m -- "$wurzel") || return 1
+  [ -n "$z" ] && [ -n "$w" ] || return 1
+  [ "$z" = "$w" ] && return 0
+  case "$z" in
+    "$w"/*) return 0 ;;
+  esac
+  return 1
+}
+
+# Der Sitzungsordner darf weder in der Web-Wurzel liegen noch sie enthalten.
+omaclusive_sitzung_ungeeignet() {
+  local ziel="$1" home="$2" programm="$3" install
+  install="${home}/.local/share/omaclusive"
+  omaclusive_liegt_in "$ziel" "$programm" && return 0
+  omaclusive_liegt_in "$programm" "$ziel" && return 0
+  omaclusive_liegt_in "$ziel" "$install" && return 0
+  omaclusive_liegt_in "$install" "$ziel" && return 0
+  return 1
+}
+
+# Gleicher Ordner wie sitzung.py: privates Laufzeitverzeichnis, sonst ein privater
+# Ordner außerhalb der Web-Wurzel (nie ~/.local/share/omaclusive/run).
 omaclusive_sitzung_ordner() {
-  local runtime="${XDG_RUNTIME_DIR:-}" mode owner last
+  local runtime="${XDG_RUNTIME_DIR:-}" mode owner last home programm ziel
+  home="${HOME}"
+  programm="${_omaclusive_programm}"
+  [ -n "$programm" ] || return 1
   if [ -n "$runtime" ] && [ -d "$runtime" ] && [ ! -L "$runtime" ]; then
     mode="$(stat -c '%a' "$runtime" 2>/dev/null || true)"
     owner="$(stat -c '%u' "$runtime" 2>/dev/null || true)"
@@ -40,12 +73,26 @@ omaclusive_sitzung_ordner() {
     if [ "$owner" = "$(id -u)" ] && [ -n "$mode" ]; then
       last="${mode: -2}"
       if [ "$last" = "00" ]; then
-        printf '%s/omaclusive' "$runtime"
-        return 0
+        ziel="${runtime}/omaclusive"
+        if ! omaclusive_sitzung_ungeeignet "$ziel" "$home" "$programm"; then
+          printf '%s' "$ziel"
+          return 0
+        fi
       fi
     fi
   fi
-  printf '%s/.local/share/omaclusive/run' "$HOME"
+  ziel="${home}/.local/state/omaclusive/run"
+  if omaclusive_sitzung_ungeeignet "$ziel" "$home" "$programm"; then
+    ziel="${home}/.omaclusive-private/run"
+  fi
+  if omaclusive_sitzung_ungeeignet "$ziel" "$home" "$programm"; then
+    ziel="/tmp/omaclusive-$(id -u)/run"
+  fi
+  if omaclusive_sitzung_ungeeignet "$ziel" "$home" "$programm"; then
+    echo "kein privater Sitzungsordner außerhalb der Web-Wurzel" >&2
+    return 1
+  fi
+  printf '%s' "$ziel"
 }
 
 # Schreibt die Startseite (Modus 0600) und gibt ihre file-Adresse aus. Das Geheimnis steht nicht in der Befehlszeile.

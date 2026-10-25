@@ -159,6 +159,22 @@ def _baustein_ausfuehren(data):
     return ergebnis
 def _zugang_ok(h):
     return sitzung.zugang_ok(h.headers, PORT, SESSION_TOKEN)
+def _sitzungsname(name):
+    """Dateiname der Sitzungsdatei oder der lokalen Startdatei, die das Geheimnis trägt."""
+    return name.endswith(".session") or name.endswith(".boot.html")
+def _statische_geheimdatei(pfad):
+    """Sitzungsdatei nie als statische Datei ausliefern, auch nicht über einen Verweis."""
+    try:
+        echt = os.path.realpath(pfad)
+    except OSError:
+        return False
+    if _sitzungsname(os.path.basename(echt)):
+        return True
+    try:
+        sitz = os.path.realpath(sitzung.ordner())
+    except OSError:
+        return False
+    return sitzung.liegt_in(echt, sitz)
 def _autostart_in_config(an):
     """Das Feld "autostart" der Config folgt dem Zustand der Datei. Schreibt nur bei Abweichung und nur, wenn es eine Config gibt."""
     if not os.path.exists(CFG): return
@@ -295,13 +311,15 @@ class H(http.server.SimpleHTTPRequestHandler):
         m = _re.fullmatch(r"/(img|plugins/[a-z0-9_-]{1,40})/([A-Za-z0-9_.-]+\.svg)", roh)
         if m:
             ziel = praxis.bild_im_stil(os.path.join(DIR, m.group(1)), m.group(2), _lade_config().get("bildstil"))
-            if ziel is not None:
+            if ziel is not None and not _statische_geheimdatei(str(ziel)):
                 return str(ziel)
         ziel = super().translate_path(path)
         echt = os.path.realpath(ziel)
         for geheim in (os.path.realpath(CFG), os.path.realpath(CFG + ".bak")):
             if echt == geheim:
                 return os.path.join(DIR, ".omaclusive-kein-zugriff")
+        if _statische_geheimdatei(ziel):
+            return os.path.join(DIR, ".omaclusive-kein-zugriff")
         return ziel
     def end_headers(s):
         s.send_header("Cache-Control", "no-store")
@@ -326,6 +344,8 @@ class H(http.server.SimpleHTTPRequestHandler):
     def do_GET(s):
         u = urllib.parse.urlparse(s.path); q = urllib.parse.parse_qs(u.query)
         pfad = _pfad_normal(s.path)
+        if _sitzungsname(pfad.rsplit("/", 1)[-1]):
+            return s.j({"ok": False}, 404)
         if pfad == "/api/bereit":
             return s.j({"ok": True})
         if pfad in _GET_AKTION:

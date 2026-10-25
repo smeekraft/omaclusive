@@ -102,38 +102,237 @@ def anfrage(port, methode, pfad, body=None, token=None, host=None, origin=None, 
     return antwort.status, inhalt
 
 
+def ordner_wie_shell(env, cwd):
+    py = subprocess.check_output(
+        [sys.executable, "-c", "import sitzung; print(sitzung.ordner(), end='')"],
+        cwd=cwd, env=env, text=True)
+    sh = subprocess.check_output(
+        ["bash", "-c", "source startlib.sh; omaclusive_sitzung_ordner"],
+        cwd=cwd, env=env, text=True).strip()
+    return py, sh
+
+
+def server_log(pfad):
+    try:
+        with open(pfad, encoding="utf-8", errors="replace") as handle:
+            return handle.read()[-2000:]
+    except OSError:
+        return ""
+
+
+def warte_bereit(port):
+    for _ in range(60):
+        try:
+            st, bereit = anfrage(port, "GET", "/api/bereit")
+            if st == 200 and isinstance(bereit, dict) and bereit.get("ok") is True:
+                return True
+        except (ConnectionRefusedError, OSError):
+            time.sleep(0.1)
+    return False
+
+
+def sitzung_vom_server(env, cwd):
+    roh = subprocess.check_output(
+        [sys.executable, "-c",
+         "import os, sitzung\n"
+         "p = int(os.environ['PORT'])\n"
+         "print(sitzung.datei(p))\n"
+         "print(sitzung.lesen(p))"],
+        cwd=cwd, env=env, text=True)
+    zeilen = roh.splitlines()
+    ok(len(zeilen) == 2 and zeilen[1], "Sitzungsdatei lesbar: %r" % roh)
+    return zeilen[0], zeilen[1]
+
+
+def kein_geheimnis(port, url, geheim, text):
+    st, inhalt = anfrage(port, "GET", url)
+    ok(st == 404 and geheim not in str(inhalt), "%s: %s %s" % (text, st, url))
+
+
+def kopiere_installation(home):
+    ziel = os.path.join(home, ".local", "share", "omaclusive")
+    os.makedirs(ziel)
+    os.chmod(ziel, 0o755)
+    for name in ("server.py", "sitzung.py", "hilferuf.py", "i18n.py", "praxis.py"):
+        shutil.copy(os.path.join(DIR, name), os.path.join(ziel, name))
+    return ziel
+
+
+def pruefe_nicht_per_http(env, install, beschreibung, prefix):
+    """Server aus der Installationskopie: GET holt die Sitzungsdatei nicht."""
+    with socket.socket() as so:
+        so.bind(("127.0.0.1", 0))
+        port = so.getsockname()[1]
+    env = dict(env)
+    env["PORT"] = str(port)
+    env["PYTHONUNBUFFERED"] = "1"
+    logpfad = os.path.join(env["HOME"], "server-%s.err" % port)
+    log = open(logpfad, "w", encoding="utf-8")
+    srv = subprocess.Popen([sys.executable, "server.py"], cwd=install, env=env, stdout=log, stderr=subprocess.STDOUT)
+    lecks = []
+    fehler = None
+    try:
+        ok(warte_bereit(port), "Server (%s) antwortet nicht: %s" % (beschreibung, server_log(logpfad)))
+        datei, geheim = sitzung_vom_server(env, install)
+        with open(datei, encoding="ascii") as handle:
+            ok(geheim in handle.read(), beschreibung + ": Datei enthält das Geheimnis")
+        ok(modus(datei) == 0o600, beschreibung + ": Datei ist 0600")
+        ok(modus(os.path.dirname(datei)) == 0o700, beschreibung + ": Ordner ist 0700")
+        ok(not sitzung.liegt_in(datei, install), beschreibung + ": Datei liegt in der Web-Wurzel: " + datei)
+        ok(not sitzung.liegt_in(os.path.dirname(datei), install), beschreibung + ": Ordner liegt in der Web-Wurzel")
+        ok(os.path.realpath(datei).startswith(os.path.realpath(prefix) + os.sep), beschreibung + ": unerwarteter Ort " + datei)
+        for url in (
+            "/run/%d.session" % port,
+            "/%d.session" % port,
+            "/run/%d.boot.html" % port,
+            "/%d.boot.html" % port,
+            "/run/%d%%2esession" % port,
+        ):
+            kein_geheimnis(port, url, geheim, beschreibung)
+        alt = os.path.join(install, "run")
+        os.makedirs(alt, exist_ok=True)
+        pflanze = os.path.join(alt, "%d.session" % port)
+        with open(pflanze, "w", encoding="ascii") as handle:
+            handle.write(geheim + "\n")
+        lecks.append(pflanze)
+        kein_geheimnis(port, "/run/%d.session" % port, geheim, beschreibung + ", gepflanzte Datei")
+        link = os.path.join(install, "sitzung-leak.txt")
+        os.symlink(datei, link)
+        lecks.append(link)
+        kein_geheimnis(port, "/sitzung-leak.txt", geheim, beschreibung + ", Verweis")
+        boot = subprocess.check_output(
+            [sys.executable, "-c",
+             "import os, sitzung; print(sitzung.boot_schreiben(int(os.environ['PORT']), ''), end='')"],
+            cwd=install, env=env, text=True)
+        with open(boot, encoding="utf-8") as handle:
+            ok(geheim in handle.read(), beschreibung + ": Startdatei lokal")
+        ok(not sitzung.liegt_in(boot, install), beschreibung + ": Startdatei in der Web-Wurzel: " + boot)
+        bootlink = os.path.join(install, "boot-leak.txt")
+        os.symlink(boot, bootlink)
+        lecks.append(bootlink)
+        kein_geheimnis(port, "/boot-leak.txt", geheim, beschreibung + ", Startdatei-Verweis")
+        kein_geheimnis(port, "/%d.boot.html" % port, geheim, beschreibung + ", boot.html")
+    except BaseException as exc:
+        fehler = exc
+        raise
+    finally:
+        srv.terminate()
+        try:
+            srv.wait(5)
+        except subprocess.TimeoutExpired:
+            srv.kill()
+        log.close()
+        if fehler is not None:
+            sys.stderr.write(server_log(logpfad))
+        for pfad in lecks:
+            try:
+                os.remove(pfad)
+            except OSError:
+                pass
+
+
 def main():
-    # Ordnerwahl stimmt mit der Shell überein (privat oder der eigene run-Ordner).
+    # Ordnerwahl stimmt mit der Shell überein und liegt nie unter der Web-Wurzel.
     home_probe = tempfile.mkdtemp(prefix="omaclusive-ordner-")
+    reste = [home_probe]
+    fallback = os.path.join(home_probe, ".local", "state", "omaclusive", "run")
     try:
         env = dict(os.environ, HOME=home_probe)
         env.pop("XDG_RUNTIME_DIR", None)
-        py = subprocess.check_output(
-            [sys.executable, "-c", "import sitzung; print(sitzung.ordner(), end='')"],
-            cwd=DIR, env=env, text=True)
-        sh = subprocess.check_output(
-            ["bash", "-c", "source startlib.sh; omaclusive_sitzung_ordner"],
-            cwd=DIR, env=env, text=True).strip()
-        ok(py == sh == os.path.join(home_probe, ".local", "share", "omaclusive", "run"), "Ordner ohne Laufzeitverzeichnis: " + py)
+        py, sh = ordner_wie_shell(env, DIR)
+        ok(py == sh == fallback, "Ordner ohne Laufzeitverzeichnis: " + py)
+        ok(sitzung.liegt_in(os.path.join(home_probe, "a", "b"), home_probe), "liegt_in erkennt Unterordner")
+        ok(not sitzung.liegt_in(home_probe + "-x", home_probe), "liegt_in verwechselt keine Nachbarn")
         privat = tempfile.mkdtemp(prefix="omaclusive-runtime-")
+        reste.append(privat)
         os.chmod(privat, 0o700)
         env["XDG_RUNTIME_DIR"] = privat
-        py = subprocess.check_output(
-            [sys.executable, "-c", "import sitzung; print(sitzung.ordner(), end='')"],
-            cwd=DIR, env=env, text=True)
-        sh = subprocess.check_output(
-            ["bash", "-c", "source startlib.sh; omaclusive_sitzung_ordner"],
-            cwd=DIR, env=env, text=True).strip()
+        py, sh = ordner_wie_shell(env, DIR)
         ok(py == sh == os.path.join(privat, "omaclusive"), "privates Laufzeitverzeichnis: " + py)
         offen = tempfile.mkdtemp(prefix="omaclusive-offen-")
+        reste.append(offen)
         os.chmod(offen, 0o755)
         env["XDG_RUNTIME_DIR"] = offen
-        py = subprocess.check_output(
-            [sys.executable, "-c", "import sitzung; print(sitzung.ordner(), end='')"],
-            cwd=DIR, env=env, text=True)
-        ok(py.startswith(home_probe), "offenes Laufzeitverzeichnis wird nicht benutzt")
+        py, sh = ordner_wie_shell(env, DIR)
+        ok(py == sh == fallback, "offenes Laufzeitverzeichnis wird nicht benutzt: " + py)
+        innen = tempfile.mkdtemp(prefix=".omaclusive-runtime-", dir=DIR)
+        reste.append(innen)
+        os.chmod(innen, 0o700)
+        env["XDG_RUNTIME_DIR"] = innen
+        py, sh = ordner_wie_shell(env, DIR)
+        ok(py == sh == fallback, "Laufzeitverzeichnis in der Web-Wurzel wird nicht benutzt: " + py)
+        install_runtime = os.path.join(home_probe, ".local", "share", "omaclusive", "runtime")
+        os.makedirs(install_runtime)
+        os.chmod(install_runtime, 0o700)
+        env["XDG_RUNTIME_DIR"] = install_runtime
+        py, sh = ordner_wie_shell(env, DIR)
+        ok(py == sh == fallback, "Laufzeitverzeichnis im Installationsordner wird nicht benutzt: " + py)
+        state_link = os.path.join(home_probe, ".local", "state")
+        os.symlink(os.path.join(home_probe, ".local", "share", "omaclusive"), state_link)
+        env.pop("XDG_RUNTIME_DIR", None)
+        py, sh = ordner_wie_shell(env, DIR)
+        privat_fallback = os.path.join(home_probe, ".omaclusive-private", "run")
+        ok(py == sh == privat_fallback, "state-Verweis in die Web-Wurzel wird nicht benutzt: " + py)
+        ok(not sitzung.liegt_in(py, os.path.join(home_probe, ".local", "share", "omaclusive")), "Fallback bleibt außerhalb")
     finally:
-        shutil.rmtree(home_probe, ignore_errors=True)
+        for pfad in reste:
+            shutil.rmtree(pfad, ignore_errors=True)
+
+    # HOME ist selbst die Web-Wurzel: weder state noch der private Ordner daneben sind sicher.
+    baum = tempfile.mkdtemp(prefix="omaclusive-heim-")
+    try:
+        shutil.copy(os.path.join(DIR, "sitzung.py"), baum)
+        shutil.copy(os.path.join(DIR, "startlib.sh"), baum)
+        env = dict(os.environ, HOME=baum)
+        env.pop("XDG_RUNTIME_DIR", None)
+        py, sh = ordner_wie_shell(env, baum)
+        tmp_ordner = "/tmp/omaclusive-%d/run" % os.getuid()
+        ok(py == sh == tmp_ordner, "Home in der Web-Wurzel weicht nach /tmp aus: " + py)
+        with socket.socket() as so:
+            so.bind(("127.0.0.1", 0))
+            port = so.getsockname()[1]
+        env["PORT"] = str(port)
+        subprocess.check_call(
+            [sys.executable, "-c", "import os, sitzung; sitzung.anlegen(int(os.environ['PORT']))"],
+            cwd=baum, env=env)
+        datei = os.path.join(tmp_ordner, "%d.session" % port)
+        ok(modus(datei) == 0o600, "Ausweichdatei ist 0600")
+        ok(modus(tmp_ordner) == 0o700, "Ausweichordner ist 0700")
+        ok(not sitzung.liegt_in(datei, baum), "Ausweichdatei liegt in der Web-Wurzel")
+        os.remove(datei)
+        try:
+            os.rmdir(tmp_ordner)
+            os.rmdir(os.path.dirname(tmp_ordner))
+        except OSError:
+            pass
+    finally:
+        shutil.rmtree(baum, ignore_errors=True)
+
+    # Installiertes Layout: Web-Wurzel ist ~/.local/share/omaclusive. GET /run/<port>.session bleibt leer.
+    home_install = tempfile.mkdtemp(prefix="omaclusive-install-")
+    privat_http = None
+    try:
+        install = kopiere_installation(home_install)
+        basis = dict(os.environ, HOME=home_install)
+        basis.pop("XDG_RUNTIME_DIR", None)
+        basis.pop("PYTHONPATH", None)
+        pruefe_nicht_per_http(basis, install, "Fallback", os.path.join(home_install, ".local", "state", "omaclusive", "run"))
+        privat_http = tempfile.mkdtemp(prefix="omaclusive-xdg-")
+        os.chmod(privat_http, 0o700)
+        env = dict(basis)
+        env["XDG_RUNTIME_DIR"] = privat_http
+        pruefe_nicht_per_http(env, install, "Laufzeitverzeichnis", os.path.join(privat_http, "omaclusive"))
+        innen_http = os.path.join(install, "runtime")
+        os.makedirs(innen_http)
+        os.chmod(innen_http, 0o700)
+        env = dict(basis)
+        env["XDG_RUNTIME_DIR"] = innen_http
+        pruefe_nicht_per_http(env, install, "abgelehntes Laufzeitverzeichnis", os.path.join(home_install, ".local", "state", "omaclusive", "run"))
+        ok(not os.path.exists(os.path.join(innen_http, "omaclusive")), "abgelehntes Laufzeitverzeichnis bleibt ohne Sitzungsordner")
+    finally:
+        if privat_http:
+            shutil.rmtree(privat_http, ignore_errors=True)
+        shutil.rmtree(home_install, ignore_errors=True)
 
     with socket.socket() as so:
         so.bind(("127.0.0.1", 0))
@@ -150,6 +349,7 @@ def main():
         os.chmod(pfad, 0o755)
     cfg = os.path.join(DIR, "config.json")
     sicher = None
+    lecks = []
     if os.path.exists(cfg):
         sicher = os.path.join(home, "config.original")
         shutil.copy(cfg, sicher)
@@ -175,6 +375,16 @@ def main():
         datei = sitzung.datei(port, home)
         ok(modus(datei) == 0o600, "Sitzungsdatei ist 0600: %o" % modus(datei))
         ok(modus(os.path.dirname(datei)) == 0o700, "Sitzungsordner ist 0700")
+        ok(not sitzung.liegt_in(datei, DIR), "Sitzungsdatei liegt in der Web-Wurzel: " + datei)
+        ok(not sitzung.liegt_in(datei, os.path.join(home, ".local", "share", "omaclusive")), "Sitzungsdatei liegt im Installationsordner: " + datei)
+        ok(os.path.realpath(os.path.dirname(datei)) == os.path.realpath(os.path.join(home, ".local", "state", "omaclusive", "run")),
+           "Fallback ist der private state-Ordner: " + datei)
+        kein_geheimnis(port, "/run/%d.session" % port, geheim, "GET Fallback-Pfad")
+        kein_geheimnis(port, "/%d.session" % port, geheim, "GET Sitzungsname")
+        leck = os.path.join(DIR, "sitzung-leak.txt")
+        os.symlink(datei, leck)
+        lecks.append(leck)
+        kein_geheimnis(port, "/sitzung-leak.txt", geheim, "GET Verweis auf die Sitzungsdatei")
         ok(gebunden(port), "Server hört auf 127.0.0.1")
         ok("00000000:%04X" % port not in open("/proc/net/tcp", encoding="ascii").read().upper(), "nicht auf allen Schnittstellen")
 
@@ -245,7 +455,18 @@ def main():
         ok(geheim in html and html.startswith("<!doctype html>"), "Startdatei trägt das Geheimnis nur lokal")
         url = sitzung.boot_url(port, "setup.html", home)
         ok(url.startswith("file://") and geheim not in url, "Befehlszeile enthält das Geheimnis nicht")
+        ok(not sitzung.liegt_in(boot, DIR), "Startdatei liegt in der Web-Wurzel")
+        bootlink = os.path.join(DIR, "boot-leak.txt")
+        os.symlink(boot, bootlink)
+        lecks.append(bootlink)
+        kein_geheimnis(port, "/boot-leak.txt", geheim, "GET Verweis auf die Startdatei")
+        kein_geheimnis(port, "/%d.boot.html" % port, geheim, "GET boot.html")
     finally:
+        for pfad in lecks:
+            try:
+                os.remove(pfad)
+            except OSError:
+                pass
         if "alt_xdg" in locals() and alt_xdg is not None:
             os.environ["XDG_RUNTIME_DIR"] = alt_xdg
         srv.terminate()

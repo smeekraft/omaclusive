@@ -35,7 +35,7 @@ In an emergency call **112** (EU) or your local emergency number, or let someone
 
 ## On this computer
 
-The server listens only on `127.0.0.1`. Each start creates a new session secret and stores it so that only this user can read it (`0600`, under `$XDG_RUNTIME_DIR/omaclusive/` when that directory is private, otherwise under `~/.local/share/omaclusive/run/`). The launcher passes it to this user's browser. There is no login and no extra step for the person who presses the two buttons.
+The server listens only on `127.0.0.1`. Each start creates a new session secret and stores it so that only this user can read it (`0600` file in a `0700` directory: `$XDG_RUNTIME_DIR/omaclusive/` when that directory is private and outside the folder the server serves, otherwise `~/.local/state/omaclusive/run/`). It is never stored under the document root, including `~/.local/share/omaclusive/`. The launcher passes it to this user's browser. There is no login and no extra step for the person who presses the two buttons.
 
 Other accounts on the same computer cannot power off, reboot, open links, change the config, or run a tile action. Host and Origin checks apply to every protected route, including tile actions. Opening something, going back, the file chooser, and the hint sound use POST. A `confirm: true` field in the request does not turn the computer off: power-off, reboot, and lock run only after the server has issued a one-time confirmation for that question and the Yes tile sends it back.
 
