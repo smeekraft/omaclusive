@@ -17,16 +17,47 @@ AUFNAHME_TEMPO = 1.15  # so langsam sind die mitgelieferten Aufnahmen in audio/ 
 LOGDATEI = os.path.expanduser("~/.local/share/omaclusive/log.txt")
 
 
+def _log_ist_datei(pfad):
+    return os.path.isfile(pfad) and not os.path.islink(pfad)
+
+
+def logdateien_abschirmen():
+    """Vorhandene Ansagen-Logs auf 0600 setzen. Der Inhalt bleibt.
+
+    Die Datei liegt im Installationsordner. Andere Konten auf demselben Rechner
+    sollen sie nicht lesen, auch nicht eine alte log.txt von vor dieser Sperre.
+    """
+    for pfad in (LOGDATEI, LOGDATEI + ".1"):
+        try:
+            if _log_ist_datei(pfad):
+                os.chmod(pfad, 0o600)
+        except OSError:
+            pass
+
+
 def log(text):
-    """Schreibt Fehler der Ansage in ~/.local/share/omaclusive/log.txt (klein gehalten)."""
+    """Schreibt Fehler der Ansage nach log.txt (klein gehalten).
+
+    Gesprochene Sätze gehören nicht hierher: die Datei liegt im Ordner,
+    den der lokale Server ausliefert.
+    """
     try:
         os.makedirs(os.path.dirname(LOGDATEI), exist_ok=True)
-        if os.path.isfile(LOGDATEI) and os.path.getsize(LOGDATEI) > 200000:
-            os.replace(LOGDATEI, LOGDATEI + ".1")
-        with open(LOGDATEI, "a", encoding="utf-8") as handle:
-            handle.write(time.strftime("%Y-%m-%d %H:%M:%S ") + str(text)[:300] + "\n")
+        alt = LOGDATEI + ".1"
+        if _log_ist_datei(LOGDATEI) and os.path.getsize(LOGDATEI) > 200000:
+            os.replace(LOGDATEI, alt)
+        # 0600 von Anfang an, und keinem Verweis folgen (der Satz stünde sonst woanders).
+        fd = os.open(LOGDATEI, os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW, 0o600)
+        try:
+            with os.fdopen(fd, "a", encoding="utf-8") as handle:
+                fd = None
+                handle.write(time.strftime("%Y-%m-%d %H:%M:%S ") + str(text)[:300] + "\n")
+        finally:
+            if fd is not None:
+                os.close(fd)
     except OSError:
         pass
+    logdateien_abschirmen()
 
 
 def which(name):
@@ -200,15 +231,50 @@ def _synth_piper(text, wav):
     return r.returncode == 0 and os.path.isfile(wav) and os.path.getsize(wav) > 44
 
 
+def _espeak_wav_ok(wav):
+    return os.path.isfile(wav) and os.path.getsize(wav) > 44
+
+
+def _espeak_lauf(binary, wav, extra, text):
+    """text ist None oder der Satz auf stdin. Der Satz ist nie ein Argument."""
+    cmd = [binary, "-v", language(), "-w", wav] + extra
+    try:
+        if text is None:
+            return subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, timeout=20)
+        return subprocess.run(cmd, input=(text + "\n").encode("utf-8"), capture_output=True, timeout=20)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+
+def _synth_espeak_datei(binary, text, wav):
+    """Privatdatei 0600 für espeak-ng ohne --stdin. Weg damit, sobald der Prozess fertig ist."""
+    fd, phrase = tempfile.mkstemp(prefix="omaclusive-satz-", suffix=".txt")
+    lauf = None
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+            handle.write("\n")
+        lauf = _espeak_lauf(binary, wav, ["-f", phrase], None)
+    except OSError:
+        return False
+    finally:
+        try:
+            os.remove(phrase)
+        except OSError:
+            pass
+    return lauf is not None and lauf.returncode == 0 and _espeak_wav_ok(wav)
+
+
 def _synth_espeak(text, wav):
+    """espeak-ng. Der Satz steht nicht in der Befehlszeile, sonst lesen ihn andere Konten über ps."""
     binary = which("espeak-ng")
     if not binary:
         return False
-    try:
-        r = subprocess.run([binary, "-v", language(), "-w", wav, text], capture_output=True, text=True, timeout=20)
-    except (OSError, subprocess.TimeoutExpired):
-        return False
-    return r.returncode == 0 and os.path.isfile(wav) and os.path.getsize(wav) > 44
+    # --stdin: der ganze Satz auf einmal. Ältere espeak-ng kennen das Flag nicht, dann -f und 0600.
+    lauf = _espeak_lauf(binary, wav, ["--stdin"], text)
+    if lauf is not None and lauf.returncode == 0 and _espeak_wav_ok(wav):
+        return True
+    return _synth_espeak_datei(binary, text, wav)
 
 
 _phrase_wav = {}
@@ -479,7 +545,7 @@ def _wav_fuer(text, stimme):
     if not vorhanden:
         vorhanden = _vorgefertigt(text, stimme) or _synthese(text, stimme)
         if not vorhanden:
-            log("Keine Stimme für: " + text)
+            log("Keine Stimme")
             return None
         with _lock:
             andere = _wav_da(key)
