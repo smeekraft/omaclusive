@@ -149,6 +149,37 @@ def kein_geheimnis(port, url, geheim, text):
     ok(st == 404 and geheim not in str(inhalt), "%s: %s %s" % (text, st, url))
 
 
+def log_pflanzen(wurzel, phrase, mit_hallo=False):
+    """log.txt mit einem gesprochenen Satz, wie eine alte Datei im Installationsordner."""
+    pfade = []
+    for name in ("log.txt", "log.txt.1"):
+        pfad = os.path.join(wurzel, name)
+        with open(pfad, "w", encoding="utf-8") as handle:
+            handle.write("Keine Stimme für: %s\n" % phrase)
+        os.chmod(pfad, 0o644)
+        pfade.append(pfad)
+    link = os.path.join(wurzel, "log-leak.txt")
+    os.symlink(os.path.join(wurzel, "log.txt"), link)
+    pfade.append(link)
+    if mit_hallo:
+        hallo = os.path.join(wurzel, "hallo.txt")
+        with open(hallo, "w", encoding="utf-8") as handle:
+            handle.write("hallo-static")
+        pfade.append(hallo)
+    return pfade
+
+
+def log_anfragen(port, phrase, geheim, beschreibung):
+    """GET ohne und mit Sitzungsgeheimnis liefert den gesprochenen Satz nicht."""
+    urls = ("/log.txt", "/log.txt.1", "/log-leak.txt", "/a/../log.txt", "/log%2etxt", "/log.txt?x=1")
+    for url in urls:
+        kein_geheimnis(port, url, phrase, beschreibung + " " + url)
+        st, inhalt = anfrage(port, "GET", url, token=geheim)
+        ok(st == 404 and phrase not in str(inhalt), "%s mit Geheimnis: %s %s" % (beschreibung, st, url))
+    st, inhalt = anfrage(port, "HEAD", "/log.txt")
+    ok(st == 404 and phrase not in str(inhalt), beschreibung + " HEAD /log.txt: %s" % st)
+
+
 def kopiere_installation(home):
     ziel = os.path.join(home, ".local", "share", "omaclusive")
     os.makedirs(ziel)
@@ -168,12 +199,20 @@ def pruefe_nicht_per_http(env, install, beschreibung, prefix):
     env["PYTHONUNBUFFERED"] = "1"
     logpfad = os.path.join(env["HOME"], "server-%s.err" % port)
     log = open(logpfad, "w", encoding="utf-8")
+    phrase = "GEHEIM-ansage-" + beschreibung.replace(" ", "-")
+    lecks = log_pflanzen(install, phrase, mit_hallo=True)
     srv = subprocess.Popen([sys.executable, "server.py"], cwd=install, env=env, stdout=log, stderr=subprocess.STDOUT)
-    lecks = []
     fehler = None
     try:
         ok(warte_bereit(port), "Server (%s) antwortet nicht: %s" % (beschreibung, server_log(logpfad)))
+        ok(modus(os.path.join(install, "log.txt")) == 0o600, beschreibung + ": alte log.txt ist 0600")
+        ok(modus(os.path.join(install, "log.txt.1")) == 0o600, beschreibung + ": alte log.txt.1 ist 0600")
+        with open(os.path.join(install, "log.txt"), encoding="utf-8") as handle:
+            ok(phrase in handle.read(), beschreibung + ": Loginhalt bleibt erhalten")
         datei, geheim = sitzung_vom_server(env, install)
+        log_anfragen(port, phrase, geheim, beschreibung + " Log")
+        st, inhalt = anfrage(port, "GET", "/hallo.txt")
+        ok(st == 200 and inhalt == "hallo-static", beschreibung + ": normale Datei bleibt erreichbar: %s" % st)
         with open(datei, encoding="ascii") as handle:
             ok(geheim in handle.read(), beschreibung + ": Datei enthält das Geheimnis")
         ok(modus(datei) == 0o600, beschreibung + ": Datei ist 0600")
@@ -385,6 +424,11 @@ def main():
         os.symlink(datei, leck)
         lecks.append(leck)
         kein_geheimnis(port, "/sitzung-leak.txt", geheim, "GET Verweis auf die Sitzungsdatei")
+        phrase = "GEHEIM-repo-log-7f29"
+        for pfad in log_pflanzen(DIR, phrase):
+            lecks.append(pfad)
+        log_anfragen(port, phrase, geheim, "Web-Wurzel")
+        ok(modus(os.path.join(DIR, "log.txt")) == 0o644, "eine später angelegte log.txt bleibt lesbar für den Test, wird aber nicht ausgeliefert")
         ok(gebunden(port), "Server hört auf 127.0.0.1")
         ok("00000000:%04X" % port not in open("/proc/net/tcp", encoding="ascii").read().upper(), "nicht auf allen Schnittstellen")
 

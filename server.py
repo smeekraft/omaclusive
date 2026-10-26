@@ -162,13 +162,17 @@ def _zugang_ok(h):
 def _sitzungsname(name):
     """Dateiname der Sitzungsdatei oder der lokalen Startdatei, die das Geheimnis trägt."""
     return name.endswith(".session") or name.endswith(".boot.html")
+def _logname(name):
+    """Ansagen-Log. Auch eine alte Datei im Installationsordner, nie statisch ausliefern."""
+    return name in ("log.txt", "log.txt.1")
 def _statische_geheimdatei(pfad):
-    """Sitzungsdatei nie als statische Datei ausliefern, auch nicht über einen Verweis."""
+    """Sitzungsdatei und Ansagen-Log nie als statische Datei, auch nicht über einen Verweis."""
     try:
         echt = os.path.realpath(pfad)
     except OSError:
         return False
-    if _sitzungsname(os.path.basename(echt)):
+    name = os.path.basename(echt)
+    if _sitzungsname(name) or _logname(name):
         return True
     try:
         sitz = os.path.realpath(sitzung.ordner())
@@ -344,7 +348,8 @@ class H(http.server.SimpleHTTPRequestHandler):
     def do_GET(s):
         u = urllib.parse.urlparse(s.path); q = urllib.parse.parse_qs(u.query)
         pfad = _pfad_normal(s.path)
-        if _sitzungsname(pfad.rsplit("/", 1)[-1]):
+        datei = pfad.rsplit("/", 1)[-1]
+        if _sitzungsname(datei) or _logname(datei):
             return s.j({"ok": False}, 404)
         if pfad == "/api/bereit":
             return s.j({"ok": True})
@@ -568,9 +573,19 @@ def _sprache_vorab():
 def _hilferuf_bereit():
     try: _kanaele_sicher()
     except Exception: pass
+def _log_abschirmen():
+    """Alte Ansagen-Logs im ausgelieferten Ordner für andere Konten unlesbar machen."""
+    for name in ("log.txt", "log.txt.1"):
+        pfad = os.path.join(DIR, name)
+        try:
+            if os.path.isfile(pfad) and not os.path.islink(pfad):
+                os.chmod(pfad, 0o600)
+        except OSError:
+            pass
 def main():
     global SESSION_TOKEN
     SESSION_TOKEN = sitzung.anlegen(PORT)
+    _log_abschirmen()
     threading.Thread(target=_ohr_laden, daemon=True).start()
     threading.Thread(target=_sprache_vorab, daemon=True).start()
     threading.Thread(target=_hilferuf_bereit, daemon=True).start()
