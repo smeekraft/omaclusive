@@ -179,6 +179,21 @@ def _statische_geheimdatei(pfad):
     except OSError:
         return False
     return sitzung.liegt_in(echt, sitz)
+_NIE_STATISCH = (".log", ".bak", ".tmp", ".teil", ".session")
+def _nicht_ausliefern(pfad):
+    """Statisch nur Dateien im Programmordner: keine versteckten Dateien (.git, .config-*.tmp),
+    keine Logs, Sicherungen oder Zwischenstände und kein Verweis, der aus dem Ordner herausführt."""
+    if _statische_geheimdatei(pfad):
+        return True
+    wurzel = os.path.realpath(DIR)
+    echt = os.path.realpath(pfad)
+    if not sitzung.liegt_in(echt, wurzel):
+        return True
+    for rel in (os.path.relpath(os.path.abspath(pfad), DIR), os.path.relpath(echt, wurzel)):
+        teile = [] if rel == "." else rel.split(os.sep)
+        if any(teil.startswith(".") for teil in teile):
+            return True
+    return os.path.basename(echt).lower().endswith(_NIE_STATISCH)
 def _autostart_in_config(an):
     """Das Feld "autostart" der Config folgt dem Zustand der Datei. Schreibt nur bei Abweichung und nur, wenn es eine Config gibt."""
     if not os.path.exists(CFG): return
@@ -382,16 +397,20 @@ class H(http.server.SimpleHTTPRequestHandler):
         m = _re.fullmatch(r"/(img|plugins/[a-z0-9_-]{1,40})/([A-Za-z0-9_.-]+\.svg)", roh)
         if m:
             ziel = praxis.bild_im_stil(os.path.join(DIR, m.group(1)), m.group(2), _lade_config().get("bildstil"))
-            if ziel is not None and not _statische_geheimdatei(str(ziel)):
+            if ziel is not None and not _nicht_ausliefern(str(ziel)):
                 return str(ziel)
         ziel = super().translate_path(path)
         echt = os.path.realpath(ziel)
         for geheim in (os.path.realpath(CFG), os.path.realpath(CFG + ".bak")):
             if echt == geheim:
                 return os.path.join(DIR, ".omaclusive-kein-zugriff")
-        if _statische_geheimdatei(ziel):
+        if _nicht_ausliefern(ziel):
             return os.path.join(DIR, ".omaclusive-kein-zugriff")
         return ziel
+    def list_directory(s, path):
+        """Keine Ordnerlisten."""
+        s.send_error(404)
+        return None
     def end_headers(s):
         s.send_header("Cache-Control", "no-store")
         s.send_header("Referrer-Policy", "same-origin")
@@ -647,8 +666,8 @@ def _hilferuf_bereit():
     try: _kanaele_sicher()
     except Exception: pass
 def _log_abschirmen():
-    """Alte Ansagen-Logs im ausgelieferten Ordner für andere Konten unlesbar machen."""
-    for name in ("log.txt", "log.txt.1"):
+    """Alte Logs und die Config (Hilferuf-Kanal) im ausgelieferten Ordner für andere Konten unlesbar machen."""
+    for name in ("log.txt", "log.txt.1", "server.log", "config.json", "config.json.bak"):
         pfad = os.path.join(DIR, name)
         try:
             if os.path.isfile(pfad) and not os.path.islink(pfad):

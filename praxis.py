@@ -138,7 +138,13 @@ def bild_im_stil(ordner, name, stil):
     if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9_.-]{1,80}", name) or name.startswith("."):
         return None
     ziel = Path(ordner) / bildstil(stil) / name
-    return ziel if ziel.is_file() else None
+    if not ziel.is_file():
+        return None
+    try:
+        ziel.resolve().relative_to(Path(ordner).resolve())
+    except (OSError, ValueError):
+        return None  # Verweis aus dem Ordner heraus
+    return ziel
 
 
 def plugin_datei(wurzel, pid, datei, stil=None):
