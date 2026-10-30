@@ -29,6 +29,8 @@ python3 test_ansage.py
 python3 test_audio.py
 node test_i18n.js
 python3 test_modi.py
+python3 test_sitzung.py
+python3 test_eingabe_kanal.py
 node --experimental-websocket test_eingabe.js
 node --experimental-websocket test_editor.js
 ```

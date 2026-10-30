@@ -39,6 +39,10 @@ The server listens only on `127.0.0.1`. Each start creates a new session secret 
 
 Other accounts on the same computer cannot power off, reboot, open links, change the config, or run a tile action. Host and Origin checks apply to every protected route, including tile actions. Opening something, going back, the file chooser, and the hint sound use POST. A `confirm: true` field in the request does not turn the computer off: power-off, reboot, and lock run only after the server has issued a one-time confirmation for that question and the Yes tile sends it back.
 
+The launcher only opens the browser when the server on port 8795 proves that it knows the new session secret (`/api/bereit?probe=…` answers with an HMAC, never the secret). If another account took the port first, Omaclusive does not start and says so. The server log is in the same private folder as the session file (`server.log`, `0600`), not in the folder the server serves. The server never serves hidden files, logs, backups, half-written files, folder listings, or links that point out of its folder. The install folder `~/.local/share/omaclusive` is `0700`, `config.json` is `0600`.
+
+**Input channel for button hardware (off by default).** A button bridge can send `left`, `right`, `back` or `hold` over a WebSocket. It is only switched on with `"eingabe": {"websocket": true}` in `config.json`. The channel is `ws://127.0.0.1:8795/api/eingabe` on Omaclusive's own server, never another port. The handshake needs the same session secret as the HTTP API: the bridge runs as the same user, reads the secret with `sitzung.lesen(8795)` and sends it as the header `X-Omaclusive-Token`. Without a valid secret, the handshake is refused and no message is taken. The same applies to every reconnect. Older bridges that listened on `ws://localhost:8765` are no longer used.
+
 ## Installation
 
 ```bash
@@ -372,6 +376,7 @@ python3 test_audio.py
 node test_i18n.js
 python3 test_modi.py                               # modes, path store, editor API
 python3 test_sitzung.py                            # session secret, origin checks, no GET actions
+python3 test_eingabe_kanal.py                      # input channel only with the secret, launcher proof, nothing private served
 node --experimental-websocket test_editor.js    # browser test of the editor
 python3 test_pflege.py                            # reminders and tasks
 python3 test_fernsehen.py                         # TV: channels, calm mpv call, buttons inside mpv

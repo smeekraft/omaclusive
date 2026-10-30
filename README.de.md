@@ -39,6 +39,10 @@ Der Server hört nur auf `127.0.0.1`. Jeder Start erzeugt ein neues Sitzungsgehe
 
 Andere Konten auf demselben Rechner können nicht ausschalten, neu starten, Links öffnen, die Konfiguration ändern oder eine Kachel-Aktion ausführen. Die Prüfung von Host und Origin gilt für jeden geschützten Weg, auch für Kachel-Aktionen. Öffnen, Zurück, die Dateiauswahl und der Hinweiston gehen über POST. Ein Feld `confirm: true` in der Anfrage schaltet den Rechner nicht aus: Ausschalten, Neustart und Sperren laufen erst, wenn der Server für diese Frage eine einmalige Bestätigung ausgestellt hat und die Ja-Kachel sie zurückschickt.
 
+Der Starter öffnet den Browser erst, wenn der Server auf Port 8795 beweist, dass er das neue Sitzungsgeheimnis kennt (`/api/bereit?probe=…` antwortet mit einem HMAC, nie mit dem Geheimnis). Hat ein anderes Konto den Port vorher belegt, startet Omaclusive nicht und sagt das. Das Server-Log liegt im selben privaten Ordner wie die Sitzungsdatei (`server.log`, `0600`), nicht in dem Ordner, den der Server ausliefert. Versteckte Dateien, Logs, Sicherungen, halb geschriebene Dateien, Ordnerlisten und Verweise aus dem Ordner heraus liefert der Server nie aus. Der Installationsordner `~/.local/share/omaclusive` hat `0700`, `config.json` hat `0600`.
+
+**Eingabekanal für Knopf-Hardware (Standard: aus).** Eine Knopf-Brücke kann `left`, `right`, `back` oder `hold` über einen WebSocket schicken. Das geht nur mit `"eingabe": {"websocket": true}` in der `config.json`. Der Kanal ist `ws://127.0.0.1:8795/api/eingabe` am eigenen Server von Omaclusive, nie ein anderer Port. Der Handshake braucht dasselbe Sitzungsgeheimnis wie die HTTP-API: Die Brücke läuft unter demselben Benutzer, liest das Geheimnis mit `sitzung.lesen(8795)` und schickt es im Kopf `X-Omaclusive-Token`. Ohne gültiges Geheimnis wird der Handshake abgelehnt und keine Nachricht angenommen. Das gilt auch bei jedem Neuverbinden. Ältere Brücken auf `ws://localhost:8765` werden nicht mehr benutzt.
+
 ## Installation
 
 ```bash
@@ -375,6 +379,7 @@ python3 test_audio.py
 node test_i18n.js
 python3 test_modi.py                               # Modi, Pfad-Speicher, Editor-API
 python3 test_sitzung.py                            # Sitzungsgeheimnis, Herkunft, keine GET-Aktionen
+python3 test_eingabe_kanal.py                      # Eingabekanal nur mit Geheimnis, Starter-Beweis, nichts Privates ausgeliefert
 node --experimental-websocket test_editor.js    # Browser-Test des Editors
 python3 test_pflege.py                            # Erinnerungen und Aufgaben
 python3 test_fernsehen.py                         # Fernsehen: Sender, ruhiger mpv-Aufruf, Knöpfe in mpv
