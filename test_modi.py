@@ -140,14 +140,9 @@ c = laden("config.example.json"); c["modus"] = "b"
 with open(cfgp, "w", encoding="utf-8") as h: json.dump(c, h)
 srv = subprocess.Popen([sys.executable, "server.py"], cwd=DIR, env=dict(os.environ, PORT=str(PORT), HOME=home), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 try:
-    geheim = None
-    for _ in range(60):
-        try:
-            geheim = sitzung.lesen(PORT, home)
-            break
-        except OSError:
-            time.sleep(0.15)
-    ok(bool(geheim), "Sitzungsgeheimnis liegt bereit")
+    # Erst wenn der Server das Geheimnis beweist: eine alte Sitzungsdatei vom letzten Lauf zählt nicht.
+    ok(sitzung.warte_auf_server(PORT, 10.0, home), "Sitzungsgeheimnis liegt bereit")
+    geheim = sitzung.lesen(PORT, home)
     def req(methode, pfad, body=None, host=None, origin=None, token=True):
         for _ in range(60):
             try:

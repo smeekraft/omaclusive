@@ -232,3 +232,52 @@ def zugang_ok(headers, port, geheimnis):
         return False
     gegeben = token_aus(headers)
     return bool(gegeben) and gleich(gegeben, geheimnis)
+
+
+_PROBE = re.compile(r"[A-Za-z0-9_-]{16,64}")
+
+
+def beweis(geheimnis, probe):
+    """Antwort des Servers auf /api/bereit?probe=...: zeigt, dass er das Geheimnis kennt, ohne es zu verraten."""
+    if not geheimnis or not isinstance(probe, str) or not _PROBE.fullmatch(probe):
+        return ""
+    return hmac.new(geheimnis.encode("ascii"), ("bereit:" + probe).encode("ascii"), "sha256").hexdigest()
+
+
+def server_echt(port, home=None, timeout=1.0):
+    """True nur, wenn auf dem Port unser Server mit dem Geheimnis aus der Sitzungsdatei lauscht.
+
+    Hat ein anderes Konto den Port vorher belegt, kennt es das Geheimnis nicht.
+    Dann startet der Starter keinen Browser auf diesen Port.
+    """
+    import http.client
+    import json
+    import secrets
+    try:
+        geheimnis = lesen(port, home)
+    except OSError:
+        return False
+    probe = secrets.token_urlsafe(24)
+    con = http.client.HTTPConnection("127.0.0.1", int(port), timeout=timeout)
+    try:
+        con.request("GET", "/api/bereit?probe=" + probe, headers={"Host": "127.0.0.1:%d" % int(port)})
+        antwort = con.getresponse()
+        daten = json.loads(antwort.read(4096).decode("utf-8"))
+    except (OSError, ValueError):
+        return False
+    finally:
+        con.close()
+    if antwort.status != 200 or not isinstance(daten, dict):
+        return False
+    return gleich(str(daten.get("beweis") or ""), beweis(geheimnis, probe))
+
+
+def warte_auf_server(port, sekunden=5.0, home=None):
+    import time
+    ende = time.monotonic() + sekunden
+    while True:
+        if server_echt(port, home):
+            return True
+        if time.monotonic() >= ende:
+            return False
+        time.sleep(0.25)

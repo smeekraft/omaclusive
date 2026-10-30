@@ -63,8 +63,6 @@ function cdp(wsUrl, fehler) {
     }
     if (msg.method === "Log.entryAdded" && msg.params.entry.level === "error") {
       const e = msg.params.entry;
-      // Die Gamepad-Brücke (ws://localhost:8765) gibt es nur mit Knopf-Hardware.
-      if (String(e.url || "").indexOf(":8765") !== -1 || String(e.text || "").indexOf("8765") !== -1) return;
       fehler.push("Log: " + e.text + " " + (e.url || ""));
     }
     if (msg.id && pending.has(msg.id)) {

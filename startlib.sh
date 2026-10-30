@@ -106,15 +106,28 @@ print(sitzung.boot_url(int(os.environ["PORT"]), os.environ.get("SEITE") or ""), 
 PY
 }
 
+# Prüft, dass auf dem Port wirklich unser Server mit dem Geheimnis aus der Sitzungsdatei lauscht.
+# Hat ein anderes Konto den Port vorher belegt, startet kein Browser dorthin.
+omaclusive_server_echt() {
+  local dir="$1" port="$2"
+  DIR="$dir" PORT="$port" python3 - <<'PY'
+import os, sys
+sys.path.insert(0, os.environ["DIR"])
+import sitzung
+sys.exit(0 if sitzung.warte_auf_server(int(os.environ["PORT"]), 5.0) else 1)
+PY
+}
+
 omaclusive_server_starten() {
-  local dir="$1" port="$2" i
-  mkdir -p "${HOME}/.local/share/omaclusive"
-  PORT="$port" nohup python3 "${dir}/server.py" >>"${HOME}/.local/share/omaclusive/server.log" 2>&1 &
-  for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
-    curl -sf -o /dev/null --max-time 1 "http://127.0.0.1:${port}/api/bereit" && return 0
-    sleep 0.25
-  done
-  echo "Omaclusive-Server startet nicht. Siehe ~/.local/share/omaclusive/server.log" >&2
+  local dir="$1" port="$2" ordner log
+  # Das Log liegt im privaten Sitzungsordner (0700), nicht im Ordner, den der Server ausliefert.
+  ordner="$(omaclusive_sitzung_ordner)" || return 1
+  mkdir -p "$ordner" && chmod 700 "$ordner" || return 1
+  log="${ordner}/server.log"
+  (umask 077; : >>"$log")
+  PORT="$port" nohup python3 "${dir}/server.py" >>"$log" 2>&1 &
+  omaclusive_server_echt "$dir" "$port" && return 0
+  echo "Omaclusive-Server startet nicht (oder der Port ${port} ist von einem anderen Programm belegt). Siehe ${log}" >&2
   return 1
 }
 

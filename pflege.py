@@ -7,6 +7,7 @@ import datetime
 import json
 import os
 import re
+import tempfile
 from pathlib import Path
 
 MAX_ERINNERUNGEN = 30
@@ -108,11 +109,20 @@ def laden(heim):
 
 
 def speichern(heim, daten):
+    """Schreibt atomar mit Modus 0600: Erinnerungen und Aufgaben gehen andere Konten nichts an."""
     ziel = datei(heim)
     ziel.parent.mkdir(parents=True, exist_ok=True)
-    tmp = ziel.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(daten, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    os.replace(tmp, ziel)
+    fd, tmp = tempfile.mkstemp(prefix=".pflege-", suffix=".tmp", dir=str(ziel.parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(daten, ensure_ascii=False, indent=2) + "\n")
+        os.replace(tmp, ziel)
+    except Exception:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def passt_tag(e, tag):

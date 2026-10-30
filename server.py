@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Lokaler Mini-Server fuer Omaclusive (nur 127.0.0.1, keine Cloud).
 Liefert die App aus. Standardport 8795."""
-import http.server, json, os, re, datetime, subprocess, shutil, urllib.parse, signal, threading, time, hmac, secrets
+import http.server, json, os, re, datetime, subprocess, shutil, urllib.parse, signal, threading, time, hmac, secrets, base64, hashlib
 import hilferuf
 import sitzung
 from i18n import tr
@@ -179,6 +179,21 @@ def _statische_geheimdatei(pfad):
     except OSError:
         return False
     return sitzung.liegt_in(echt, sitz)
+_NIE_STATISCH = (".log", ".bak", ".tmp", ".teil", ".session")
+def _nicht_ausliefern(pfad):
+    """Statisch nur Dateien im Programmordner: keine versteckten Dateien (.git, .config-*.tmp),
+    keine Logs, Sicherungen oder Zwischenstände und kein Verweis, der aus dem Ordner herausführt."""
+    if _statische_geheimdatei(pfad):
+        return True
+    wurzel = os.path.realpath(DIR)
+    echt = os.path.realpath(pfad)
+    if not sitzung.liegt_in(echt, wurzel):
+        return True
+    for rel in (os.path.relpath(os.path.abspath(pfad), DIR), os.path.relpath(echt, wurzel)):
+        teile = [] if rel == "." else rel.split(os.sep)
+        if any(teil.startswith(".") for teil in teile):
+            return True
+    return os.path.basename(echt).lower().endswith(_NIE_STATISCH)
 def _autostart_in_config(an):
     """Das Feld "autostart" der Config folgt dem Zustand der Datei. Schreibt nur bei Abweichung und nur, wenn es eine Config gibt."""
     if not os.path.exists(CFG): return
@@ -293,6 +308,73 @@ def _sende_bereich(s, pfad):
                 s.wfile.write(block); rest -= len(block)
     except (BrokenPipeError, ConnectionResetError):
         pass
+_WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+_EINGABE_WOERTER = ("left", "right", "back", "hold")
+_eingabe = set()
+_eingabe_lock = threading.Lock()
+def eingabe_an(config):
+    """Eingabekanal für Knopf-Brücken. Standard aus: nur mit "eingabe": {"websocket": true}."""
+    e = config.get("eingabe") if isinstance(config, dict) else None
+    return isinstance(e, dict) and e.get("websocket") is True
+def _ws_rahmen_lesen(datei):
+    """Ein Rahmen vom Client als (opcode, daten), None bei Ende oder Fehler.
+    Nur ganze, maskierte, kleine Rahmen (die Wörter sind kurz)."""
+    kopf = datei.read(2)
+    if len(kopf) < 2: return None
+    if not kopf[0] & 0x80 or kopf[0] & 0x70 or not kopf[1] & 0x80: return None
+    laenge = kopf[1] & 0x7F
+    if laenge > 125: return None
+    maske = datei.read(4)
+    roh = datei.read(laenge)
+    if len(maske) < 4 or len(roh) < laenge: return None
+    return kopf[0] & 0x0F, bytes(b ^ maske[i % 4] for i, b in enumerate(roh))
+def _ws_senden(h, opcode, daten):
+    with h.ws_lock:
+        h.wfile.write(bytes((0x80 | opcode, len(daten))) + daten)
+def _eingabe_verteilen(von, wort):
+    with _eingabe_lock:
+        ziele = [h for h in _eingabe if h is not von]
+    for h in ziele:
+        try: _ws_senden(h, 0x1, wort.encode("ascii"))
+        except OSError: pass
+def _eingabe_kanal(s):
+    """WebSocket /api/eingabe. Zugang wie die HTTP-API (Sitzungsgeheimnis, Host, Origin), schon beim Handshake.
+    Die Brücke schickt left/right/back/hold, der Server gibt sie an die angemeldete Oberfläche weiter."""
+    if not eingabe_an(_lade_config()):
+        return s.j({"ok": False}, 404)
+    schluessel = str(s.headers.get("Sec-WebSocket-Key") or "").strip()
+    if "websocket" not in str(s.headers.get("Upgrade") or "").lower() or not schluessel \
+            or str(s.headers.get("Sec-WebSocket-Version") or "").strip() != "13":
+        return s.j({"ok": False}, 400)
+    annahme = base64.b64encode(hashlib.sha1((schluessel + _WS_GUID).encode("ascii", "replace")).digest()).decode("ascii")
+    s.send_response(101)
+    s.send_header("Upgrade", "websocket")
+    s.send_header("Connection", "Upgrade")
+    s.send_header("Sec-WebSocket-Accept", annahme)
+    s.end_headers()
+    s.close_connection = True
+    s.ws_lock = threading.Lock()
+    with _eingabe_lock:
+        _eingabe.add(s)
+    try:
+        while True:
+            rahmen = _ws_rahmen_lesen(s.rfile)
+            if rahmen is None or rahmen[0] == 0x8:
+                break
+            opcode, daten = rahmen
+            if opcode == 0x9:
+                _ws_senden(s, 0xA, daten)
+            elif opcode == 0x1:
+                wort = daten.decode("utf-8", "replace").strip()
+                if wort in _EINGABE_WOERTER:
+                    _eingabe_verteilen(s, wort)
+    except OSError:
+        pass
+    finally:
+        with _eingabe_lock:
+            _eingabe.discard(s)
+        try: _ws_senden(s, 0x8, b"")
+        except OSError: pass
 def _sende_datei(s, pfad):
     typen = {
         ".svg": "image/svg+xml",
@@ -315,16 +397,20 @@ class H(http.server.SimpleHTTPRequestHandler):
         m = _re.fullmatch(r"/(img|plugins/[a-z0-9_-]{1,40})/([A-Za-z0-9_.-]+\.svg)", roh)
         if m:
             ziel = praxis.bild_im_stil(os.path.join(DIR, m.group(1)), m.group(2), _lade_config().get("bildstil"))
-            if ziel is not None and not _statische_geheimdatei(str(ziel)):
+            if ziel is not None and not _nicht_ausliefern(str(ziel)):
                 return str(ziel)
         ziel = super().translate_path(path)
         echt = os.path.realpath(ziel)
         for geheim in (os.path.realpath(CFG), os.path.realpath(CFG + ".bak")):
             if echt == geheim:
                 return os.path.join(DIR, ".omaclusive-kein-zugriff")
-        if _statische_geheimdatei(ziel):
+        if _nicht_ausliefern(ziel):
             return os.path.join(DIR, ".omaclusive-kein-zugriff")
         return ziel
+    def list_directory(s, path):
+        """Keine Ordnerlisten."""
+        s.send_error(404)
+        return None
     def end_headers(s):
         s.send_header("Cache-Control", "no-store")
         s.send_header("Referrer-Policy", "same-origin")
@@ -352,6 +438,10 @@ class H(http.server.SimpleHTTPRequestHandler):
         if _sitzungsname(datei) or _logname(datei):
             return s.j({"ok": False}, 404)
         if pfad == "/api/bereit":
+            # Mit probe beweist der Server dem Starter, dass er das Geheimnis kennt (Port nicht von Fremden belegt).
+            probe = q.get("probe", [""])[0]
+            if probe:
+                return s.j({"ok": True, "beweis": sitzung.beweis(SESSION_TOKEN, probe)})
             return s.j({"ok": True})
         if pfad in _GET_AKTION:
             return s.j({"ok": False}, 405)
@@ -434,6 +524,8 @@ class H(http.server.SimpleHTTPRequestHandler):
             return s.j(_tv_stand())
         if pfad == "/api/pfad":
             return s.j(_pfad_antwort())
+        if pfad == "/api/eingabe":
+            return _eingabe_kanal(s)
         if pfad == "/api/modi":
             import modi
             c = _lade_config()
@@ -574,8 +666,8 @@ def _hilferuf_bereit():
     try: _kanaele_sicher()
     except Exception: pass
 def _log_abschirmen():
-    """Alte Ansagen-Logs im ausgelieferten Ordner für andere Konten unlesbar machen."""
-    for name in ("log.txt", "log.txt.1"):
+    """Alte Logs und die Config (Hilferuf-Kanal) im ausgelieferten Ordner für andere Konten unlesbar machen."""
+    for name in ("log.txt", "log.txt.1", "server.log", "config.json", "config.json.bak"):
         pfad = os.path.join(DIR, name)
         try:
             if os.path.isfile(pfad) and not os.path.islink(pfad):
@@ -584,11 +676,13 @@ def _log_abschirmen():
             pass
 def main():
     global SESSION_TOKEN
+    # Erst den Port belegen, dann das Geheimnis schreiben: Ist der Port fremd belegt, endet der Start hier.
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", PORT), H)
     SESSION_TOKEN = sitzung.anlegen(PORT)
     _log_abschirmen()
     threading.Thread(target=_ohr_laden, daemon=True).start()
     threading.Thread(target=_sprache_vorab, daemon=True).start()
     threading.Thread(target=_hilferuf_bereit, daemon=True).start()
-    http.server.ThreadingHTTPServer(("127.0.0.1", PORT), H).serve_forever()
+    server.serve_forever()
 if __name__ == "__main__":
     main()

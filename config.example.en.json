@@ -266,6 +266,9 @@
   "waehlSekunden": 3,
   "stimmeTempo": 1.15,
   "hoeren": false,
+  "eingabe": {
+    "websocket": false
+  },
   "bildSekunden": 10,
   "radio": {
     "modus": "browser",
