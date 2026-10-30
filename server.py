@@ -419,6 +419,10 @@ class H(http.server.SimpleHTTPRequestHandler):
         if _sitzungsname(datei) or _logname(datei):
             return s.j({"ok": False}, 404)
         if pfad == "/api/bereit":
+            # Mit probe beweist der Server dem Starter, dass er das Geheimnis kennt (Port nicht von Fremden belegt).
+            probe = q.get("probe", [""])[0]
+            if probe:
+                return s.j({"ok": True, "beweis": sitzung.beweis(SESSION_TOKEN, probe)})
             return s.j({"ok": True})
         if pfad in _GET_AKTION:
             return s.j({"ok": False}, 405)
@@ -653,11 +657,13 @@ def _log_abschirmen():
             pass
 def main():
     global SESSION_TOKEN
+    # Erst den Port belegen, dann das Geheimnis schreiben: Ist der Port fremd belegt, endet der Start hier.
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", PORT), H)
     SESSION_TOKEN = sitzung.anlegen(PORT)
     _log_abschirmen()
     threading.Thread(target=_ohr_laden, daemon=True).start()
     threading.Thread(target=_sprache_vorab, daemon=True).start()
     threading.Thread(target=_hilferuf_bereit, daemon=True).start()
-    http.server.ThreadingHTTPServer(("127.0.0.1", PORT), H).serve_forever()
+    server.serve_forever()
 if __name__ == "__main__":
     main()
