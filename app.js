@@ -1939,10 +1939,17 @@ function bindSetup() {
   });
 }
 
+// Eingabekanal für Knopf-Brücken: nur wenn in der Config eingeschaltet (Standard aus) und nur zum
+// eigenen Server. Der prüft beim Handshake dasselbe Sitzungsgeheimnis wie die HTTP-API (Cookie),
+// Host und Origin. Nie zu einem anderen Port: den könnte ein fremdes Konto belegt haben.
+function eingabeKanalAn() {
+  return !!(C && C.eingabe && C.eingabe.websocket === true);
+}
+
 function ws() {
-  if (window.__selftest) return;
+  if (window.__selftest || !eingabeKanalAn() || !window.__omaclusiveToken) return;
   try {
-    const socket = new WebSocket("ws://localhost:8765");
+    const socket = new WebSocket("ws://" + location.host + "/api/eingabe");
     socket.onmessage = m => {
       const sd = String(m.data || "").trim();
       if (sd === "left") eingabe("links");

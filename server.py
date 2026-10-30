@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Lokaler Mini-Server fuer Omaclusive (nur 127.0.0.1, keine Cloud).
 Liefert die App aus. Standardport 8795."""
-import http.server, json, os, re, datetime, subprocess, shutil, urllib.parse, signal, threading, time, hmac, secrets
+import http.server, json, os, re, datetime, subprocess, shutil, urllib.parse, signal, threading, time, hmac, secrets, base64, hashlib
 import hilferuf
 import sitzung
 from i18n import tr
@@ -293,6 +293,73 @@ def _sende_bereich(s, pfad):
                 s.wfile.write(block); rest -= len(block)
     except (BrokenPipeError, ConnectionResetError):
         pass
+_WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+_EINGABE_WOERTER = ("left", "right", "back", "hold")
+_eingabe = set()
+_eingabe_lock = threading.Lock()
+def eingabe_an(config):
+    """Eingabekanal für Knopf-Brücken. Standard aus: nur mit "eingabe": {"websocket": true}."""
+    e = config.get("eingabe") if isinstance(config, dict) else None
+    return isinstance(e, dict) and e.get("websocket") is True
+def _ws_rahmen_lesen(datei):
+    """Ein Rahmen vom Client als (opcode, daten), None bei Ende oder Fehler.
+    Nur ganze, maskierte, kleine Rahmen (die Wörter sind kurz)."""
+    kopf = datei.read(2)
+    if len(kopf) < 2: return None
+    if not kopf[0] & 0x80 or kopf[0] & 0x70 or not kopf[1] & 0x80: return None
+    laenge = kopf[1] & 0x7F
+    if laenge > 125: return None
+    maske = datei.read(4)
+    roh = datei.read(laenge)
+    if len(maske) < 4 or len(roh) < laenge: return None
+    return kopf[0] & 0x0F, bytes(b ^ maske[i % 4] for i, b in enumerate(roh))
+def _ws_senden(h, opcode, daten):
+    with h.ws_lock:
+        h.wfile.write(bytes((0x80 | opcode, len(daten))) + daten)
+def _eingabe_verteilen(von, wort):
+    with _eingabe_lock:
+        ziele = [h for h in _eingabe if h is not von]
+    for h in ziele:
+        try: _ws_senden(h, 0x1, wort.encode("ascii"))
+        except OSError: pass
+def _eingabe_kanal(s):
+    """WebSocket /api/eingabe. Zugang wie die HTTP-API (Sitzungsgeheimnis, Host, Origin), schon beim Handshake.
+    Die Brücke schickt left/right/back/hold, der Server gibt sie an die angemeldete Oberfläche weiter."""
+    if not eingabe_an(_lade_config()):
+        return s.j({"ok": False}, 404)
+    schluessel = str(s.headers.get("Sec-WebSocket-Key") or "").strip()
+    if "websocket" not in str(s.headers.get("Upgrade") or "").lower() or not schluessel \
+            or str(s.headers.get("Sec-WebSocket-Version") or "").strip() != "13":
+        return s.j({"ok": False}, 400)
+    annahme = base64.b64encode(hashlib.sha1((schluessel + _WS_GUID).encode("ascii", "replace")).digest()).decode("ascii")
+    s.send_response(101)
+    s.send_header("Upgrade", "websocket")
+    s.send_header("Connection", "Upgrade")
+    s.send_header("Sec-WebSocket-Accept", annahme)
+    s.end_headers()
+    s.close_connection = True
+    s.ws_lock = threading.Lock()
+    with _eingabe_lock:
+        _eingabe.add(s)
+    try:
+        while True:
+            rahmen = _ws_rahmen_lesen(s.rfile)
+            if rahmen is None or rahmen[0] == 0x8:
+                break
+            opcode, daten = rahmen
+            if opcode == 0x9:
+                _ws_senden(s, 0xA, daten)
+            elif opcode == 0x1:
+                wort = daten.decode("utf-8", "replace").strip()
+                if wort in _EINGABE_WOERTER:
+                    _eingabe_verteilen(s, wort)
+    except OSError:
+        pass
+    finally:
+        with _eingabe_lock:
+            _eingabe.discard(s)
+        try: _ws_senden(s, 0x8, b"")
+        except OSError: pass
 def _sende_datei(s, pfad):
     typen = {
         ".svg": "image/svg+xml",
@@ -434,6 +501,8 @@ class H(http.server.SimpleHTTPRequestHandler):
             return s.j(_tv_stand())
         if pfad == "/api/pfad":
             return s.j(_pfad_antwort())
+        if pfad == "/api/eingabe":
+            return _eingabe_kanal(s)
         if pfad == "/api/modi":
             import modi
             c = _lade_config()

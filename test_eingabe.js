@@ -65,8 +65,6 @@ function cdp(wsUrl, fehler) {
     }
     if (msg.method === "Log.entryAdded" && msg.params.entry.level === "error") {
       const e = msg.params.entry;
-      // Die Gamepad-Brücke (ws://localhost:8765) gibt es nur mit Knopf-Hardware.
-      if (String(e.url || "").indexOf(":8765") !== -1 || String(e.text || "").indexOf("8765") !== -1) return;
       fehler.push("Log: " + e.text + " " + (e.url || ""));
     }
     if (msg.id && pending.has(msg.id)) {
@@ -172,7 +170,8 @@ async function startUmgebung(url) {
   await client.send("Log.enable");
   await client.send("Emulation.setFocusEmulationEnabled", { enabled: true });
   await client.send("Emulation.setDeviceMetricsOverride", { width: 1480, height: 780, deviceScaleFactor: 1, mobile: false });
-  await client.send("Page.addScriptToEvaluateOnNewDocument", { source: "window.__ctx=[];addEventListener('contextmenu',e=>window.__ctx.push(e));" });
+  await client.send("Page.addScriptToEvaluateOnNewDocument", { source: "window.__ctx=[];addEventListener('contextmenu',e=>window.__ctx.push(e));"
+    + "window.__ws=[];(function(W){window.WebSocket=function(u,p){window.__ws.push(String(u));return p===undefined?new W(u):new W(u,p);};window.WebSocket.prototype=W.prototype;})(window.WebSocket);" });
   await client.send("Page.navigate", { url: "http://127.0.0.1:" + port + "/" + (url || "") + "#" + sitzungToken });
   for (let i = 0; i < 60; i++) {
     if (await ev(client, "window.__ready === true")) break;
@@ -932,6 +931,44 @@ async function rangeTest(client, t, sprache) {
   pruefe(t + ": Pfadtricks liefern 404", pfad.every(s => s === 404), pfad);
 }
 
+// Eingabekanal für Knopf-Brücken: aus = gar keine Verbindung; an = nur zum eigenen Server, mit Geheimnis.
+function bruecke(mitToken) {
+  return new Promise(resolve => {
+    const ws = new WebSocket("ws://127.0.0.1:" + port + "/api/eingabe", mitToken ? { headers: { "X-Omaclusive-Token": sitzungToken } } : undefined);
+    const fertig = ok => { clearTimeout(uhr); resolve({ ok, ws }); };
+    const uhr = setTimeout(() => fertig(false), 3000);
+    ws.addEventListener("open", () => fertig(true));
+    ws.addEventListener("error", () => fertig(false));
+  });
+}
+
+async function eingabeKanalAus(client, t) {
+  await sleep(800);
+  const urls = await ev(client, "JSON.stringify(window.__ws)").then(JSON.parse);
+  pruefe(t + ": keine WebSocket-Verbindung (auch nicht zu :8765)", urls.length === 0, urls);
+  const b = await bruecke(true);
+  pruefe(t + ": Server nimmt keine Brücke an", !b.ok);
+  try { b.ws.close(); } catch (err) {}
+}
+
+async function eingabeKanalAn(client, t) {
+  await sleep(800);
+  const urls = await ev(client, "JSON.stringify(window.__ws)").then(JSON.parse);
+  pruefe(t + ": verbindet nur zum eigenen Server", urls.length === 1 && urls[0] === "ws://127.0.0.1:" + port + "/api/eingabe", urls);
+  const fremd = await bruecke(false);
+  pruefe(t + ": Brücke ohne Geheimnis wird abgelehnt", !fremd.ok);
+  try { fremd.ws.close(); } catch (err) {}
+  const b = await bruecke(true);
+  pruefe(t + ": Brücke mit Geheimnis wird angenommen", b.ok);
+  if (!b.ok) return;
+  const vor = await zustand(client);
+  b.ws.send("right");
+  await sleep(SPAET + 200);
+  const nach = await zustand(client);
+  pruefe(t + ": Brücke rechts = rechte Kachel", nach.eingaben > vor.eingaben && nach.paar.links !== vor.paar.links, { vor, nach });
+  b.ws.close();
+}
+
 async function main() {
   const T = Date.now();
   const stimmenOrdner = path.join(root, "voices");
@@ -973,6 +1010,8 @@ async function main() {
     }
     await szenario(L + " Gleich zurück", sprache, c => { c.einrichtung.fertig = true; c.knopf.modus = "zwei"; c.zurueck.sekunden = 8; c.zurueck.hinweisVorherSekunden = 5; c.zurueck.hinweis = "ansage"; }, "", (cl, t) => gleichZurueck(cl, t, sprache));
     await szenario(L + " App Zwei-Knopf", sprache, c => { c.einrichtung.fertig = true; c.knopf.modus = "zwei"; c.zurueck.sekunden = 0; }, "", (cl, t) => appZwei(cl, t, sprache));
+    await szenario(L + " Eingabekanal aus (Standard)", sprache, c => { c.einrichtung.fertig = true; c.knopf.modus = "zwei"; c.zurueck.sekunden = 0; }, "", eingabeKanalAus);
+    await szenario(L + " Eingabekanal an", sprache, c => { c.einrichtung.fertig = true; c.knopf.modus = "zwei"; c.zurueck.sekunden = 0; c.eingabe = { websocket: true }; }, "", eingabeKanalAn);
     await szenario(L + " App Ein-Knopf", sprache, c => { c.einrichtung.fertig = true; c.knopf.modus = "ein"; c.knopf.scanMs = 3000; c.zurueck.sekunden = 0; }, "", (cl, t) => appEin(cl, t, sprache));
     await szenario(L + " Wahl-Wartezeit 3 s", sprache, c => { c.einrichtung.fertig = true; c.knopf.modus = "zwei"; c.zurueck.sekunden = 0; c.waehlSekunden = 3; }, "", (cl, t) => wahlWartezeit(cl, t, sprache));
     await szenario(L + " Autostart-Haken im Betreuerbereich", sprache, c => { c.einrichtung.fertig = true; c.zurueck.sekunden = 0; c.autostart = false; }, "setup.html", (cl, t) => autostartSchalter(cl, t, sprache));
