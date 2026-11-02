@@ -242,7 +242,7 @@ async function main() {
     pruefe("fremde Seite: HTTP-Anfragen an die API bekommen 401/403", api.length >= 2 && api.every(a => a[1] === 401 || a[1] === 403), antworten);
     console.log("Antworten des Servers an die fremde Seite:", JSON.stringify(antworten));
     const ws = antworten.filter(a => a[0] === "ws");
-    pruefe("fremde Seite: WebSocket-Handshakes bekommen 401/403 (kein 101)", ws.every(a => a[1] === 401 || a[1] === 403), antworten);
+    pruefe("fremde Seite: WebSocket-Handshakes bekommen 401/403 (kein 101)", ws.length >= 2 && ws.every(a => a[1] === 401 || a[1] === 403), antworten);
     const log = fs.readFileSync(logPfad, "utf8");
     pruefe("Server-Log ohne Geheimnis, Token oder Code", !log.includes(geheim) && !log.includes(btoken) && !log.includes(code));
   } finally {
