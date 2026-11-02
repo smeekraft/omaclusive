@@ -95,7 +95,8 @@ omaclusive_sitzung_ordner() {
   printf '%s' "$ziel"
 }
 
-# Schreibt die Startseite (Modus 0600) und gibt ihre file-Adresse aus. Das Geheimnis steht nicht in der Befehlszeile.
+# Holt beim laufenden Server einen Einmal-Code (60 s) und schreibt die Startseite (Modus 0600), die ihn per POST
+# einlöst. Gibt ihre file-Adresse aus. Kein Geheimnis in der Befehlszeile, in einer Adresse oder in einem Cookie.
 omaclusive_boot() {
   local dir="$1" port="$2" seite="$3"
   DIR="$dir" PORT="$port" SEITE="$seite" python3 - <<'PY'

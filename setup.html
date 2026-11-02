@@ -19,7 +19,7 @@ input{font-size:1.8rem;width:70vw;padding:1rem;border-radius:12px;border:4px sol
  <p><button id="sprachBtn" onclick="oeffneSprache()">🌐 Sprache · Language</button></p>
  <div class="row" id="cards"></div>
  <p><button class="small" onclick="oeffneRuf()">Hilferuf</button>
- <button class="small" onclick="location.href='api/blatt'">Bild-Blatt</button>
+ <button class="small" onclick="location.href=Sitzung.src('/api/blatt')">Bild-Blatt</button>
  <button class="small" id="stilBtn" onclick="bildstilWechseln()"></button>
  <button class="small" id="scanBtn" onclick="scanWechseln()"></button>
  <button class="small" id="zurueckBtn" onclick="zurueckWechseln()"></button>
@@ -171,8 +171,10 @@ function targets(){
   }
   return out;
 }
+// Bild und Wort als Knoten, nie als HTML: Wörter kommen aus Dateinamen und Plugins.
+function kachelInhalt(b,bild,wort){const i=document.createElement('img');i.alt='';i.src=Sitzung.src(bild||'');b.appendChild(i);b.appendChild(document.createTextNode(wort==null?'':String(wort)))}
 function list(){const r=$('cards');r.innerHTML='';targets().forEach(k=>{const p=present(k);const b=document.createElement('button');
-  b.innerHTML=`<img src="${p.bild}" alt="">${p.wort}`;b.onclick=()=>{cur=k;$('linkBox').classList.add('hide');$('fileBox').classList.add('hide');view('v2')};r.appendChild(b)});view('v1')}
+  kachelInhalt(b,p.bild,p.wort);b.onclick=()=>{cur=k;$('linkBox').classList.add('hide');$('fileBox').classList.add('hide');view('v2')};r.appendChild(b)});view('v1')}
 function back(){list()}
 const SCAN_STUFEN=[3000,2000,1000], ZURUECK_STUFEN=[20,30,40,0];
 function scanText(ms){return ms===3000?T('Markierung: langsam, 3 Sekunden'):ms===2000?T('Markierung: normal, 2 Sekunden'):ms===1000?T('Markierung: schnell, 1 Sekunde'):Tf('Markierung: {} Sekunden',String(ms/1000))}
@@ -249,7 +251,7 @@ async function pickFile(folder){$('linkBox').classList.add('hide');$('fileBox').
   save(Tf('{} öffnet jetzt: {}',cur.wort||cur.label,r.path.split('/').pop()))}
 function showFns(){
   const fill=(id,items,care)=>{const box=$(id);box.innerHTML='';items.forEach(def=>{const b=document.createElement('button');
-    if(care)b.className='care';b.innerHTML=`<img src="${def.bild}" alt="">${def.wort}`;b.onclick=()=>applyFn(def);box.appendChild(b)})};
+    if(care)b.className='care';kachelInhalt(b,def.bild,def.wort);b.onclick=()=>applyFn(def);box.appendChild(b)})};
   fill('fns',catalog.filter(x=>!x.betreuer),false);
   fill('fnsCare',catalog.filter(x=>x.betreuer),true);
   view('v4');

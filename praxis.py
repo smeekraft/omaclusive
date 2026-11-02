@@ -210,12 +210,27 @@ def _plugin_fuer_client(pid, daten):
     }
 
 
+def _desktop_exec(pfad):
+    """Exec-Wert nach der Desktop-Entry-Spezifikation: in Anführungszeichen, \\ " ` $ maskiert, % verdoppelt.
+    Ein Pfad mit Leerzeichen oder Sonderzeichen bleibt so ein einziges Argument."""
+    text = str(pfad)
+    if any(z in text for z in "\n\r\0"):
+        raise ValueError("Pfad ungültig")
+    if not any(z in text for z in " \t\"'\\><~|&;$*?#()`%"):
+        return text  # nichts Reserviertes: so wie er ist
+    for zeichen in ("\\", '"', "`", "$"):
+        text = text.replace(zeichen, "\\" + zeichen)
+    text = text.replace("%", "%%")
+    # In .desktop-Dateien ist \ selbst ein Escape der Zeichenkette: noch einmal verdoppeln.
+    return '"' + text.replace("\\", "\\\\") + '"'
+
+
 def autostart_text(exec_pfad):
     return (
         "[Desktop Entry]\n"
         "Type=Application\n"
         "Name=Omaclusive\n"
-        "Exec=" + str(exec_pfad) + "\n"
+        "Exec=" + _desktop_exec(exec_pfad) + "\n"
         "X-GNOME-Autostart-enabled=true\n"
     )
 

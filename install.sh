@@ -61,7 +61,7 @@ echo "== Omaclusive wird nach ${DEST} gelegt. Der bisherige Talker bleibt."
 mkdir -p "$DEST" "$APPS" "${DEST}/voices"
 # Nur dieses Konto: die Config trägt den geheimen Hilferuf-Kanal, alte Logs können Sätze enthalten.
 chmod 700 "$DEST"
-for f in index.html setup.html editor.html modi.json modi.py app.js pfad.js sprache.js i18n.py sprache_wechseln.py audio_erzeugen.py \
+for f in index.html setup.html editor.html pflege.html pflege.py modi.json modi.py app.js pfad.js sprache.js i18n.py sprache_wechseln.py audio_erzeugen.py \
   server.py sitzung.py sitzung.js stimmen.py voices.json bausteine.py hilferuf.py praxis.py ohr.py fernsehen.py config.example.json config.example.en.json \
   start-talker.sh start-talker-fenster.sh startlib.sh zurueck.sh README.md README.de.md LICENSE CREDITS.md; do
   cp "$SRC/$f" "$DEST/"

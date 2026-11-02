@@ -102,7 +102,17 @@ def _hilferuf_auftrag(daten):
 def _gesehen(seit):
     return hilferuf.frage_gesehen(_kanaele_sicher(), seit)
 PORT = int(os.environ.get("PORT", 8795))
+if not 1024 <= PORT <= 65535:
+    raise SystemExit("PORT ungültig")
+# Datei-Geheimnis (0600): nur für lokale Werkzeuge dieses Kontos, nie für den Browser.
 SESSION_TOKEN = ""
+# Browser-Token: nur im Speicher dieses Prozesses, geht einmal über /api/start an die Seite.
+BROWSER_TOKEN = ""
+_startcodes = {}
+_startcode_lock = threading.Lock()
+_STARTCODE_SEKUNDEN = 60
+# Lesen ohne Kopf geht nur mit einer Signatur für genau diese Adresse (img, video, PDF).
+_SIGNIERBAR = ("/api/datei", "/api/plugin-bild", "/api/medium", "/api/blatt")
 _freigaben = {}
 _freigabe_lock = threading.Lock()
 _FREIGABE_SEKUNDEN = 180
@@ -157,8 +167,63 @@ def _baustein_ausfuehren(data):
         ergebnis = dict(ergebnis)
         ergebnis["bestaetigung"] = _freigabe_neu(name)
     return ergebnis
+def _zugang(h):
+    """200, 401 (kein oder falsches Geheimnis) oder 403 (fremde Herkunft)."""
+    return sitzung.pruefen(h.headers, PORT, (SESSION_TOKEN, BROWSER_TOKEN))
 def _zugang_ok(h):
-    return sitzung.zugang_ok(h.headers, PORT, SESSION_TOKEN)
+    return _zugang(h) == 200
+def _signiert_ok(h, pfad):
+    """Medien-Adresse mit gültiger Signatur. Host und Herkunft gelten trotzdem."""
+    if pfad not in _SIGNIERBAR or not sitzung.herkunft_ok(h.headers, PORT):
+        return False
+    return sitzung.signatur_ok(h.path, BROWSER_TOKEN)
+def _startcode_neu():
+    code = secrets.token_urlsafe(32)
+    jetzt = time.monotonic()
+    with _startcode_lock:
+        for alt in [k for k, (bis,) in _startcodes.items() if bis < jetzt]:
+            del _startcodes[alt]
+        if len(_startcodes) >= 16:
+            _startcodes.pop(next(iter(_startcodes)))
+        _startcodes[code] = (jetzt + _STARTCODE_SEKUNDEN,)
+    return code
+def _startcode_einloesen(code):
+    """Einmal und nur kurz gültig. Vergleich in konstanter Zeit über alle offenen Codes."""
+    if not isinstance(code, str) or not code:
+        return False
+    jetzt = time.monotonic()
+    with _startcode_lock:
+        treffer = None
+        for k, (bis,) in list(_startcodes.items()):
+            if sitzung.gleich(code, k) and bis >= jetzt:
+                treffer = k
+        if treffer is None:
+            return False
+        del _startcodes[treffer]
+    try:
+        os.remove(os.path.join(sitzung.ordner(), sitzung.boot_name(PORT, code)))
+    except OSError:
+        pass
+    return True
+def _start_seite(seite):
+    """Antwort auf /api/start: legt das Browser-Token in sessionStorage (nur diese Herkunft, auch dieser Port)
+    und geht zur Zielseite. Nichts davon steht in einer Adresse oder in einem Cookie."""
+    nonce = secrets.token_urlsafe(16)
+    ziel = json.dumps("/" + seite).replace("<", "\\u003c")
+    token = json.dumps(BROWSER_TOKEN)
+    html = ("<!doctype html><meta charset=\"utf-8\"><title>Omaclusive</title><script nonce=\"%s\">"
+            "try{sessionStorage.setItem(\"omaclusive-sitzung\",%s);location.replace(%s);}"
+            "catch(e){document.documentElement.textContent=\"Bitte Omaclusive neu starten.\";}</script>\n") % (nonce, token, ziel)
+    return html.encode("utf-8"), "default-src 'none'; script-src 'nonce-%s'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'" % nonce
+def _formular(h, grenze=4096):
+    n = h.laenge()
+    if n is None or n > grenze:
+        return None
+    roh = h.rfile.read(n) if n else b""
+    try:
+        return urllib.parse.parse_qs(roh.decode("ascii"), strict_parsing=False)
+    except (UnicodeDecodeError, ValueError):
+        return None
 def _sitzungsname(name):
     """Dateiname der Sitzungsdatei oder der lokalen Startdatei, die das Geheimnis trägt."""
     return name.endswith(".session") or name.endswith(".boot.html")
@@ -296,7 +361,7 @@ def _sende_bereich(s, pfad):
     s.send_header("Accept-Ranges", "bytes")
     s.send_header("Content-Length", str(ende - start + 1))
     if code == 206: s.send_header("Content-Range", "bytes %d-%d/%d" % (start, ende, groesse))
-    s.send_header("Cache-Control", "no-store")
+    s.medien_kopf = True
     s.end_headers()
     try:
         with open(pfad, "rb") as handle:
@@ -338,7 +403,8 @@ def _eingabe_verteilen(von, wort):
         try: _ws_senden(h, 0x1, wort.encode("ascii"))
         except OSError: pass
 def _eingabe_kanal(s):
-    """WebSocket /api/eingabe. Zugang wie die HTTP-API (Sitzungsgeheimnis, Host, Origin), schon beim Handshake.
+    """WebSocket /api/eingabe. Zugang wie die HTTP-API (Geheimnis, Host, Origin mit Port), schon beim Handshake.
+    Der Browser schickt sein Token im Unterprotokoll "omaclusive-token.<token>", Brücken im Kopf.
     Die Brücke schickt left/right/back/hold, der Server gibt sie an die angemeldete Oberfläche weiter."""
     if not eingabe_an(_lade_config()):
         return s.j({"ok": False}, 404)
@@ -351,8 +417,13 @@ def _eingabe_kanal(s):
     s.send_header("Upgrade", "websocket")
     s.send_header("Connection", "Upgrade")
     s.send_header("Sec-WebSocket-Accept", annahme)
+    if sitzung.WS_PROTOKOLL in sitzung.ws_protokolle(s.headers):
+        # Nur den festen Namen zurück, nie das Unterprotokoll mit dem Token.
+        s.send_header("Sec-WebSocket-Protocol", sitzung.WS_PROTOKOLL)
     s.end_headers()
     s.close_connection = True
+    try: s.connection.settimeout(None)  # Brücken dürfen lange still sein
+    except OSError: pass
     s.ws_lock = threading.Lock()
     with _eingabe_lock:
         _eingabe.add(s)
@@ -386,6 +457,7 @@ def _sende_datei(s, pfad):
         ".pdf": "application/pdf",
     }
     daten = pfad.read_bytes()
+    s.medien_kopf = True
     s.roh(daten, typen.get(pfad.suffix.lower(), "application/octet-stream"))
 class H(http.server.SimpleHTTPRequestHandler):
     def __init__(s, *a, **k): super().__init__(*a, directory=DIR, **k)
@@ -407,13 +479,21 @@ class H(http.server.SimpleHTTPRequestHandler):
         if _nicht_ausliefern(ziel):
             return os.path.join(DIR, ".omaclusive-kein-zugriff")
         return ziel
+    timeout = 30  # langsame oder hängende Verbindungen blockieren keinen Faden für immer
     def list_directory(s, path):
         """Keine Ordnerlisten."""
         s.send_error(404)
         return None
     def end_headers(s):
         s.send_header("Cache-Control", "no-store")
-        s.send_header("Referrer-Policy", "same-origin")
+        s.send_header("Referrer-Policy", "no-referrer")
+        s.send_header("X-Content-Type-Options", "nosniff")
+        s.send_header("X-Frame-Options", "DENY")
+        s.send_header("Cross-Origin-Resource-Policy", "same-origin")
+        if getattr(s, "medien_kopf", False):
+            # Fremde Bilder (Plugins, Fotos-Ordner) dürfen als Dokument geöffnet kein Skript ausführen.
+            s.send_header("Content-Security-Policy", "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox")
+            s.medien_kopf = False
         super().end_headers()
     def j(s, obj, code=200):
         b = json.dumps(obj, ensure_ascii=False).encode()
@@ -425,16 +505,68 @@ class H(http.server.SimpleHTTPRequestHandler):
         s.send_header("Content-Length", str(len(daten)))
         s.end_headers()
         s.wfile.write(daten)
+    def laenge(s):
+        roh = str(s.headers.get("Content-Length") or "0").strip()
+        if not roh.isdigit(): return None
+        return int(roh)
     def body(s):
-        n = int(s.headers.get("Content-Length") or 0)
+        n = s.laenge()
+        if n is None or n > 1000000: return None
         if not n: return {}
-        if n > 1000000: return None
         try: return json.loads(s.rfile.read(n).decode())
         except Exception: return None
+    def _start(s):
+        """Einmal-Code aus der lokalen Startdatei (file://, daher Origin "null") gegen das Browser-Token tauschen."""
+        if not sitzung._host_ok(s.headers, PORT) or not sitzung._origin_ok(s.headers, PORT, null_erlaubt=True):
+            return s.j({"ok": False}, 403)
+        form = _formular(s)
+        if form is None:
+            return s.j({"ok": False}, 400)
+        code = (form.get("code") or [""])[0]
+        seite = (form.get("seite") or [""])[0]
+        if not sitzung.ziel_ok(seite):
+            return s.j({"ok": False}, 400)
+        if not _startcode_einloesen(code):
+            text = tr("Bitte Omaclusive neu starten.").encode("utf-8")
+            return s.roh(text, "text/plain; charset=utf-8", 401)
+        html, csp = _start_seite(seite)
+        s.send_response(200)
+        s.send_header("Content-Type", "text/html; charset=utf-8")
+        s.send_header("Content-Length", str(len(html)))
+        s.send_header("Content-Security-Policy", csp)
+        s.end_headers()
+        s.wfile.write(html)
+    def do_HEAD(s):
+        if not sitzung._host_ok(s.headers, PORT):
+            return s.j({"ok": False}, 403)
+        pfad = _pfad_normal(s.path)
+        if pfad.startswith("/api/") or pfad.startswith("/config.json"):
+            return s.j({"ok": False}, 405)
+        return super().do_HEAD()
     def do_GET(s):
+        try:
+            return s._get()
+        except Exception:
+            # Keine Interna (Pfade, Tracebacks) an den Aufrufer. Der Fehler steht im privaten server.log.
+            import traceback
+            traceback.print_exc()
+            try: return s.j({"ok": False}, 500)
+            except OSError: return None
+    def do_POST(s):
+        try:
+            return s._post()
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            try: return s.j({"ok": False}, 500)
+            except OSError: return None
+    def _get(s):
         u = urllib.parse.urlparse(s.path); q = urllib.parse.parse_qs(u.query)
         pfad = _pfad_normal(s.path)
         datei = pfad.rsplit("/", 1)[-1]
+        # Jede Anfrage, auch statische Dateien, nur mit Host 127.0.0.1:<port> (DNS-Rebinding).
+        if not sitzung._host_ok(s.headers, PORT):
+            return s.j({"ok": False}, 403)
         if _sitzungsname(datei) or _logname(datei):
             return s.j({"ok": False}, 404)
         if pfad == "/api/bereit":
@@ -447,8 +579,10 @@ class H(http.server.SimpleHTTPRequestHandler):
             return s.j({"ok": False}, 405)
         if pfad == "/config.json.bak":
             return s.j({"ok": False}, 404)
-        if (pfad.startswith("/api/") or pfad == "/config.json") and not _zugang_ok(s):
-            return s.j({"ok": False}, 403)
+        if pfad.startswith("/api/") or pfad == "/config.json":
+            code = _zugang(s)
+            if code != 200 and not (code == 401 and _signiert_ok(s, pfad)):
+                return s.j({"ok": False}, code)
         if pfad == "/config.json":
             if not os.path.isfile(CFG):
                 return s.j({"ok": False}, 404)
@@ -531,11 +665,19 @@ class H(http.server.SimpleHTTPRequestHandler):
             c = _lade_config()
             return s.j({"ok": True, "modus": modi.modus_id(c), "modi": modi.modus_liste(c)})
         return super().do_GET()
-    def do_POST(s):
+    def _post(s):
         pfad = _pfad_normal(s.path)
-        if not _zugang_ok(s):
+        if pfad == "/api/start":
+            return s._start()
+        code = _zugang(s)
+        if code != 200:
+            return s.j({"ok": False}, code)
+        if pfad == "/api/startcode":
+            # Nur lokale Werkzeuge mit dem Datei-Geheimnis, nicht das Browser-Token.
+            if not sitzung.gleich(sitzung.token_aus(s.headers), SESSION_TOKEN):
+                return s.j({"ok": False}, 403)
             s.body()
-            return s.j({"ok": False}, 403)
+            return s.j({"ok": True, "code": _startcode_neu()})
         data = s.body()
         if data is None: return s.j({"ok": False}, 400)
         if pfad == "/api/open":
@@ -678,7 +820,9 @@ def main():
     global SESSION_TOKEN
     # Erst den Port belegen, dann das Geheimnis schreiben: Ist der Port fremd belegt, endet der Start hier.
     server = http.server.ThreadingHTTPServer(("127.0.0.1", PORT), H)
+    global BROWSER_TOKEN
     SESSION_TOKEN = sitzung.anlegen(PORT)
+    BROWSER_TOKEN = secrets.token_urlsafe(32)
     _log_abschirmen()
     threading.Thread(target=_ohr_laden, daemon=True).start()
     threading.Thread(target=_sprache_vorab, daemon=True).start()
