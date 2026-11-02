@@ -224,6 +224,11 @@ async function main() {
         if (url.includes("127.0.0.1:" + port + "/")) antworten.push([url, m.params.statusCode]);
       }
       if (m.method === "Network.webSocketHandshakeResponseReceived") antworten.push(["ws", m.params.response.status]);
+      // Abgelehnte Handshakes meldet Chromium nur als Fehler mit dem Statuscode im Text
+      if (m.method === "Network.webSocketFrameError") {
+        const code = /Unexpected response code: (\d+)/.exec(m.params.errorMessage || "");
+        antworten.push(["ws", code ? Number(code[1]) : m.params.errorMessage]);
+      }
     });
     for (const m of ["Page.enable", "Runtime.enable", "Network.enable"]) await angreifer.send(m);
     await angreifer.send("Page.navigate", { url: "http://127.0.0.1:" + fremdPort + "/" });
