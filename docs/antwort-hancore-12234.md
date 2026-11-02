@@ -1,6 +1,6 @@
-<!-- Draft reply for omacom/omarchy-plugin-marketplace#12234. Not posted. Replace PR_NUMBER and MERGE_SHA after the merge. -->
+<!-- Draft reply for omacom/omarchy-plugin-marketplace#12234. Not posted. Replace the commit hashes with the merge commit after the merge if preferred. -->
 
-Thanks again, @HANCORE-linux. Fixed in smeekraft/omaclusive#PR_NUMBER, code in `b96e8a9`, tests in `5d13ff1` (version 0.3.2).
+Thanks again, @HANCORE-linux. Fixed in smeekraft/omaclusive#10, code in `b96e8a9`, tests in `5d13ff1` (version 0.3.2).
 
 **The browser no longer holds the session secret, and there is no cookie.**
 
