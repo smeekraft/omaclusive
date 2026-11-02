@@ -6,7 +6,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { spawn, execSync } = require("child_process");
-const { token } = require("./tools/token.js");
+const { token, startUrl } = require("./tools/token.js");
 
 const root = __dirname;
 const port = Number(process.env.PORT || 8796);
@@ -124,7 +124,7 @@ async function lauf(sprache) {
     for (const m of ["Page.enable", "Runtime.enable", "Log.enable"]) await client.send(m);
     await client.send("Emulation.setFocusEmulationEnabled", { enabled: true });
     await client.send("Emulation.setDeviceMetricsOverride", { width: 1400, height: 2200, deviceScaleFactor: 1, mobile: false });
-    await client.send("Page.navigate", { url: "http://127.0.0.1:" + port + "/editor.html#" + geheim });
+    await client.send("Page.navigate", { url: startUrl(port, home, root, "editor.html") });
     for (let i = 0; i < 60; i++) { if (await ev(client, "window.__ready === true")) break; await sleep(100); }
     await sleep(300);
     const zeilen = () => ev(client, "document.querySelectorAll('.zeile').length");
@@ -194,19 +194,19 @@ async function lauf(sprache) {
     pruefe(t + ": Datei enthält Änderungen (ausgeblendet, neue Ebene)", datei.screens.start.liste[1].aus === true && !!datei.screens.familie, Object.keys(datei.screens));
     pruefe(t + ": Hinweis „eigener Pfad“", (await ev(client, "document.getElementById('modusInfo').textContent")).length > 5);
     // Die App benutzt den eigenen Pfad
-    await client.send("Page.navigate", { url: "http://127.0.0.1:" + port + "/#" + geheim });
+    await client.send("Page.navigate", { url: startUrl(port, home, root, "") });
     for (let i = 0; i < 60; i++) { if (await ev(client, "window.__ready === true")) break; await sleep(100); }
     await sleep(500);
     const app = JSON.parse(await ev(client, "JSON.stringify({q:window.__pfadQuelle,m:window.__modus,n:C.screens.start.liste.length,familie:!!C.screens.familie,sichtbar:Pfad.karten(C.screens.start).length})"));
     pruefe(t + ": App nimmt den eigenen Pfad", app.q === "datei" && app.m === "b" && app.familie && app.sichtbar === app.n - 1, app);
     // Einstellungen zeigen Modus und Pfad
-    await client.send("Page.navigate", { url: "http://127.0.0.1:" + port + "/setup.html#" + geheim });
+    await client.send("Page.navigate", { url: startUrl(port, home, root, "setup.html") });
     for (let i = 0; i < 60; i++) { if (await ev(client, "window.__ready === true")) break; await sleep(100); }
     await sleep(300);
     pruefe(t + ": Einstellungen zeigen den festen Pfad", (await ev(client, "document.getElementById('pfadDatei').textContent")) === pfadDatei);
     pruefe(t + ": Einstellungen zeigen den Modus", (await ev(client, "document.getElementById('modusBtn').textContent")).length > 5);
     // Zurücksetzen
-    await client.send("Page.navigate", { url: "http://127.0.0.1:" + port + "/editor.html#" + geheim });
+    await client.send("Page.navigate", { url: startUrl(port, home, root, "editor.html") });
     for (let i = 0; i < 60; i++) { if (await ev(client, "window.__ready === true")) break; await sleep(100); }
     await sleep(300);
     await ev(client, "window.confirm=()=>true; zuruecksetzen(); 0");

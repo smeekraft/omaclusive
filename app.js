@@ -1,5 +1,9 @@
 "use strict";
 const params = new URLSearchParams(location.search);
+// Bilder, Filme und PDF aus /api/ brauchen eine Signatur (kein Cookie mehr). Alles andere bleibt, wie es ist.
+function medienSrc(url) {
+  return window.Sitzung ? window.Sitzung.src(url) : url;
+}
 if (params.has("selftest")) window.__selftest = true;
 if (params.has("test")) {
   window.__test = true;
@@ -484,7 +488,7 @@ function sageZustand() {
 
 function fuelle(id, card) {
   const knopf = el(id);
-  knopf.querySelector("img").src = (card && (card.bild || card.image)) || "img/zurueck.svg";
+  knopf.querySelector("img").src = medienSrc((card && (card.bild || card.image)) || "img/zurueck.svg");
   knopf.querySelector(".wort").textContent = (card && (card.wort || card.label)) || "";
 }
 
@@ -630,7 +634,7 @@ function buehneBild(card, gen, beiFehler) {
     if (gen !== schauGen || !schauAn) return;
     beiFehler();
   };
-  img.src = (card && card.bild) || "img/fotos.svg";
+  img.src = medienSrc((card && card.bild) || "img/fotos.svg");
   window.__hinweisBild = img.src;
 }
 
@@ -779,7 +783,7 @@ function starteFilm(name) {
     buehneAus();
     filmExtern(name);
   };
-  video.src = "/api/medium?name=" + encodeURIComponent(name || "");
+  video.src = medienSrc("/api/medium?name=" + encodeURIComponent(name || ""));
   const start = video.play();
   if (start && start.catch) start.catch(() => {});
   fokus = "links";
@@ -832,7 +836,7 @@ function starteRadio() {
       sprich(T("Das geht hier nicht."));
       armIdle();
     };
-    ton.src = stream;
+    ton.src = medienSrc(stream);
     const start = ton.play();
     if (start && start.catch) start.catch(() => {});
     fokus = "links";
@@ -1940,16 +1944,17 @@ function bindSetup() {
 }
 
 // Eingabekanal für Knopf-Brücken: nur wenn in der Config eingeschaltet (Standard aus) und nur zum
-// eigenen Server. Der prüft beim Handshake dasselbe Sitzungsgeheimnis wie die HTTP-API (Cookie),
-// Host und Origin. Nie zu einem anderen Port: den könnte ein fremdes Konto belegt haben.
+// eigenen Server. Der prüft beim Handshake dasselbe Browser-Token wie die HTTP-API (im Unterprotokoll,
+// nie in der Adresse oder einem Cookie), Host und Origin mit Port. Nie zu einem anderen Port: den
+// könnte ein fremdes Konto belegt haben.
 function eingabeKanalAn() {
   return !!(C && C.eingabe && C.eingabe.websocket === true);
 }
 
 function ws() {
-  if (window.__selftest || !eingabeKanalAn() || !window.__omaclusiveToken) return;
+  if (window.__selftest || !eingabeKanalAn() || !window.Sitzung || !window.Sitzung.angemeldet) return;
   try {
-    const socket = new WebSocket("ws://" + location.host + "/api/eingabe");
+    const socket = window.Sitzung.websocket("/api/eingabe");
     socket.onmessage = m => {
       const sd = String(m.data || "").trim();
       if (sd === "left") eingabe("links");

@@ -7,8 +7,11 @@ können sie nicht lesen. Der Ordner ist das private Laufzeitverzeichnis,
 wenn das privat ist und der Webserver es nicht ausliefert. Sonst ein
 privater Ordner außerhalb der Web-Wurzel (normalerweise
 ~/.local/state/omaclusive/run/, nie ~/.local/share/omaclusive/run/).
-Der Starter liest die Datei und gibt das Geheimnis nur dem Browser
-dieses Benutzers.
+Das Datei-Geheimnis bekommen nur lokale Werkzeuge dieses Kontos (Starter,
+zurueck.sh, Knopf-Brücken) im Kopf X-Omaclusive-Token. Der Browser bekommt es nie:
+Der Starter holt damit einen Einmal-Code, den die Startseite per POST einlöst. Dafür gibt
+der Server ein eigenes Browser-Token aus, das nur im Speicher und in sessionStorage der
+Herkunft http://127.0.0.1:<port> liegt (kein Cookie, keine Adresse, kein Log).
 """
 import hmac
 import os
@@ -17,7 +20,6 @@ import stat
 import urllib.parse
 
 _NAME = re.compile(r"[A-Za-z0-9_-]{20,128}")
-_SEITE = re.compile(r"[A-Za-z0-9_./?=&%-]*")
 
 
 def gleich(a, b):
@@ -163,23 +165,78 @@ def lesen(port, home=None):
     return token
 
 
-def boot_schreiben(port, seite, home=None):
-    """Kleine lokale Seite, die das Geheimnis nur im Fragment an den Browser gibt.
+_CODE = re.compile(r"[A-Za-z0-9_-]{20,128}")
+# Ziel nach dem Start: eine Seite im Programmordner, optional mit Abfrage. Nie mit / am Anfang
+# (sonst "//fremd.example"), nie mit Fragment.
+_ZIEL = re.compile(r"(?:[A-Za-z0-9_-]{1,40}\.html)?(?:\?[A-Za-z0-9_=&%.-]{0,200})?")
 
-    Das Fragment geht nicht an den Server und steht nicht in der Befehlszeile.
-    Die Datei selbst hat Modus 0600.
+
+def ziel_ok(seite):
+    return isinstance(seite, str) and bool(_ZIEL.fullmatch(seite))
+
+
+def boot_name(port, code):
+    """Name der Startdatei. Hängt am Einmal-Code, damit der Server genau diese Datei löschen kann."""
+    import hashlib
+    kurz = hashlib.sha256(("boot:" + code).encode("ascii")).hexdigest()[:24]
+    return "%d-%s.boot.html" % (int(port), kurz)
+
+
+def boot_html(port, seite, code):
+    """Kleine lokale Seite, die einen Einmal-Code per POST an den Server gibt.
+
+    Kein Geheimnis in einer Adresse (auch nicht im Fragment), keins in der Befehlszeile.
+    Der Code gilt nur einmal und nur kurz; der Server tauscht ihn gegen das Browser-Token,
+    das nur im Speicher und in sessionStorage dieser einen Herkunft liegt.
     """
-    token = lesen(port, home)
-    seite = seite or ""
-    if not isinstance(seite, str) or not _SEITE.fullmatch(seite):
-        raise OSError("Seite ungültig")
-    pfad = os.path.join(ordner(home), "%d.boot.html" % int(port))
-    html = (
-        "<!doctype html><meta charset=\"utf-8\"><title>Omaclusive</title><script>"
-        "location.replace(\"http://127.0.0.1:%d/%s#%s\");</script>\n"
-        % (int(port), seite, token)
+    import html as _html
+    if not ziel_ok(seite or "") or not _CODE.fullmatch(code or ""):
+        raise OSError("Startdaten ungültig")
+    aktion = "http://127.0.0.1:%d/api/start" % int(port)
+    return (
+        "<!doctype html><meta charset=\"utf-8\"><meta name=\"referrer\" content=\"no-referrer\">"
+        "<title>Omaclusive</title>"
+        "<form method=\"post\" action=\"%s\" enctype=\"application/x-www-form-urlencoded\">"
+        "<input type=\"hidden\" name=\"code\" value=\"%s\">"
+        "<input type=\"hidden\" name=\"seite\" value=\"%s\">"
+        "<noscript><button>Omaclusive starten</button></noscript></form>"
+        "<script>document.forms[0].submit();</script>\n"
+        % (aktion, _html.escape(code, quote=True), _html.escape(seite or "", quote=True))
     )
-    _schreiben(pfad, html, home)
+
+
+def startcode_holen(port, home=None, timeout=2.0):
+    """Fragt den laufenden Server mit dem Datei-Geheimnis nach einem Einmal-Code."""
+    import http.client
+    import json
+    geheimnis = lesen(port, home)
+    con = http.client.HTTPConnection("127.0.0.1", int(port), timeout=timeout)
+    try:
+        con.request("POST", "/api/startcode", body=b"{}", headers={
+            "Host": "127.0.0.1:%d" % int(port),
+            "Content-Type": "application/json",
+            "X-Omaclusive-Token": geheimnis,
+        })
+        antwort = con.getresponse()
+        daten = json.loads(antwort.read(4096).decode("utf-8"))
+    except (OSError, ValueError) as fehler:
+        raise OSError("kein Startcode") from fehler
+    finally:
+        con.close()
+    code = daten.get("code") if isinstance(daten, dict) else None
+    if antwort.status != 200 or not isinstance(code, str) or not _CODE.fullmatch(code):
+        raise OSError("kein Startcode")
+    return code
+
+
+def boot_schreiben(port, seite, home=None, code=None):
+    """Schreibt die Startdatei (0600) in den privaten Sitzungsordner und gibt ihren Pfad zurück."""
+    seite = seite or ""
+    if not ziel_ok(seite):
+        raise OSError("Seite ungültig")
+    code = code or startcode_holen(port, home)
+    pfad = os.path.join(ordner(home), boot_name(port, code))
+    _schreiben(pfad, boot_html(port, seite, code), home)
     return pfad
 
 
@@ -188,50 +245,113 @@ def boot_url(port, seite, home=None):
 
 
 def _host_ok(headers, port):
-    erlaubt = {"127.0.0.1:%d" % port, "localhost:%d" % port}
+    """Nur genau 127.0.0.1:<port>. Schützt vor DNS-Rebinding und fremden Namen."""
     host = str(headers.get("Host") or "").strip().lower()
-    return host in erlaubt
+    return host == "127.0.0.1:%d" % int(port)
 
 
-def _origin_ok(headers, port):
+def eigene_herkunft(port):
+    return "http://127.0.0.1:%d" % int(port)
+
+
+def _origin_ok(headers, port, null_erlaubt=False):
+    """Origin (wenn da) muss genau diese Herkunft sein, inklusive Port. Cookies trennen keine Ports,
+    Origin schon. Ohne Origin (GET im selben Ursprung, Werkzeuge ohne Browser) zählen Referer
+    und Sec-Fetch-Site."""
     origin = str(headers.get("Origin") or "").strip()
     if origin:
-        erlaubt = {"http://127.0.0.1:%d" % port, "http://localhost:%d" % port}
-        return origin.lower() in erlaubt
+        if null_erlaubt and origin == "null":
+            return True
+        return origin == eigene_herkunft(port)
     referer = str(headers.get("Referer") or "").strip()
     if referer:
         teile = urllib.parse.urlparse(referer)
-        name = (teile.hostname or "").lower()
-        if teile.scheme != "http" or name not in ("127.0.0.1", "localhost") or teile.port != port:
+        try:
+            ref_port = teile.port
+        except ValueError:
+            return False
+        if teile.scheme != "http" or (teile.hostname or "") != "127.0.0.1" or ref_port != int(port):
             return False
     site = str(headers.get("Sec-Fetch-Site") or "").strip().lower()
-    if site in ("cross-site", "same-site"):
+    if site and site not in ("same-origin", "none"):
         return False
     return True
 
 
 def herkunft_ok(headers, port):
-    """Host und, falls der Browser sie schickt, Origin/Referer müssen diese Schleife sein."""
+    """Host und, falls der Browser sie schickt, Origin/Referer/Sec-Fetch-Site müssen genau diese Herkunft sein."""
     return _host_ok(headers, port) and _origin_ok(headers, port)
 
 
+WS_PROTOKOLL = "omaclusive"
+_WS_TOKEN = "omaclusive-token."
+
+
+def ws_protokolle(headers):
+    roh = str(headers.get("Sec-WebSocket-Protocol") or "")
+    return [teil.strip() for teil in roh.split(",") if teil.strip()]
+
+
 def token_aus(headers):
+    """Geheimnis nur aus dem eigenen Kopf X-Omaclusive-Token, beim WebSocket aus dem Unterprotokoll.
+    Nie aus einem Cookie und nie aus der Adresse."""
     kopf = str(headers.get("X-Omaclusive-Token") or "").strip()
     if kopf:
         return kopf
-    keks = str(headers.get("Cookie") or "")
-    for teil in keks.split(";"):
-        teil = teil.strip()
-        if teil.startswith("omaclusive_session="):
-            return urllib.parse.unquote(teil.split("=", 1)[1].strip())
+    for teil in ws_protokolle(headers):
+        if teil.startswith(_WS_TOKEN):
+            return teil[len(_WS_TOKEN):]
     return ""
 
 
-def zugang_ok(headers, port, geheimnis):
-    if not geheimnis or not herkunft_ok(headers, port):
-        return False
+def eines_gleich(gegeben, geheimnisse):
+    """Vergleicht mit jedem Geheimnis in konstanter Zeit, ohne früh abzubrechen."""
+    treffer = False
+    for g in geheimnisse:
+        if g and gleich(gegeben, g):
+            treffer = True
+    return treffer
+
+
+def pruefen(headers, port, geheimnisse):
+    """200 bei gültigem Zugang, 403 bei fremder Herkunft (Host, Origin, Port), 401 ohne oder mit falschem Geheimnis."""
+    if not herkunft_ok(headers, port):
+        return 403
     gegeben = token_aus(headers)
-    return bool(gegeben) and gleich(gegeben, geheimnis)
+    if not gegeben or not eines_gleich(gegeben, [g for g in geheimnisse if g]):
+        return 401
+    return 200
+
+
+def zugang_ok(headers, port, geheimnis):
+    geheimnisse = geheimnis if isinstance(geheimnis, (list, tuple)) else [geheimnis]
+    return pruefen(headers, port, geheimnisse) == 200
+
+
+def signatur(schluessel, pfad_und_abfrage):
+    """Signatur für Medien-Adressen (img, video, PDF): HMAC-SHA256 über den Pfad mit Abfrage.
+    Gilt nur für genau diese Datei und nur zum Lesen. Das Browser-Token selbst steht nie in der Adresse."""
+    if not schluessel or not isinstance(pfad_und_abfrage, str):
+        return ""
+    return hmac.new(schluessel.encode("ascii"), ("medien\n" + pfad_und_abfrage).encode("utf-8"), "sha256").hexdigest()
+
+
+def signatur_trennen(roh_pfad):
+    """Zerlegt '/api/x?a=1&sig=abc' in ('/api/x?a=1', 'abc'). sig muss der letzte Parameter sein."""
+    teile = urllib.parse.urlsplit(roh_pfad)
+    abfrage = teile.query
+    m = re.search(r"(?:^|&)sig=([0-9a-f]{64})$", abfrage)
+    if not m:
+        return None, ""
+    rest = abfrage[: m.start()]
+    return teile.path + ("?" + rest if rest else ""), m.group(1)
+
+
+def signatur_ok(roh_pfad, schluessel):
+    basis, sig = signatur_trennen(roh_pfad)
+    if not basis or not schluessel:
+        return False
+    return gleich(sig, signatur(schluessel, basis))
 
 
 _PROBE = re.compile(r"[A-Za-z0-9_-]{16,64}")

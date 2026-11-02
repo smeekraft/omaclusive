@@ -114,7 +114,7 @@ function zeichne(){
 function zeile(id,i,k,ids){
   const z=document.createElement("div");z.className="zeile"+(k.aus?" aus":"");z.dataset.ebene=id;z.dataset.index=i;z.tabIndex=0;
   const g=document.createElement("span");g.className="griff";g.textContent="☰";g.title=T("Ziehen");g.setAttribute("aria-hidden","true");g.addEventListener("pointerdown",e=>ziehStart(e,id,i,k));
-  const img=document.createElement("img");img.alt="";img.src=k.bild;
+  const img=document.createElement("img");img.alt="";img.src=Sitzung.src(k.bild);
   const w=document.createElement("span");w.className="wort";w.textContent=k.wort;
   const tag=document.createElement("span");tag.className="tag";tag.textContent=T(AKTION_TAG[k.aktion.typ]||k.aktion.typ);
   z.appendChild(g);z.appendChild(img);z.appendChild(w);z.appendChild(tag);
@@ -168,7 +168,7 @@ function hinzufuegen(karte){
 }
 function palette(){
   const p=$("palette");p.innerHTML="";
-  bibliothek.forEach(k=>{const b=document.createElement("button");b.innerHTML="";const i=document.createElement("img");i.alt="";i.src=k.bild;b.appendChild(i);b.appendChild(document.createTextNode(k.wort));b.onclick=()=>hinzufuegen(k);p.appendChild(b)});
+  bibliothek.forEach(k=>{const b=document.createElement("button");b.innerHTML="";const i=document.createElement("img");i.alt="";i.src=Sitzung.src(k.bild);b.appendChild(i);b.appendChild(document.createTextNode(k.wort));b.onclick=()=>hinzufuegen(k);p.appendChild(b)});
 }
 // Ziehen mit der Maus oder dem Finger (Zeigerereignisse). Loslassen auf einer Karte fügt davor oder danach ein, auf einer Ebene hängt an.
 let zieht=null;
@@ -207,7 +207,7 @@ function ziehFertig(){
   document.querySelectorAll(".einfuegen").forEach(x=>x.remove());
   document.querySelectorAll(".zieht").forEach(x=>x.classList.remove("zieht"));
 }
-function kachelFuellen(el,k){el.innerHTML="";if(!k)return;const i=document.createElement("img");i.alt="";i.src=k.bild;el.appendChild(i);el.appendChild(document.createTextNode(k.wort))}
+function kachelFuellen(el,k){el.innerHTML="";if(!k)return;const i=document.createElement("img");i.alt="";i.src=Sitzung.src(k.bild);el.appendChild(i);el.appendChild(document.createTextNode(k.wort))}
 function vorschau(){
   const s=modell.screens[vorschauEbene]||modell.screens[modell.start];
   const karten=Pfad.karten(s);

@@ -149,7 +149,16 @@ def starten(stimme_id, config_aendern):
             config_aendern(lambda c: anwenden(c, v))
             ende = ("fertig", "")
         except Exception as fehler:
-            ende = ("fehler", str(fehler)[:120])
+            # Nur ein fester Grund geht an die Oberfläche, keine Pfade oder Adressen. Details ins private Log.
+            import sys
+            print("Stimme %s: %s" % (v["id"], type(fehler).__name__), file=sys.stderr)
+            if isinstance(fehler, ValueError):
+                grund = "pruefung"
+            elif isinstance(fehler, OSError):
+                grund = "netz"
+            else:
+                grund = "fehler"
+            ende = ("fehler", grund)
         with _sperre:
             _job.update(status=ende[0], fehler=ende[1])
 
