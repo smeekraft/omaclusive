@@ -8,7 +8,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { spawn, execSync } = require("child_process");
-const { token } = require("./tools/token.js");
+const { token, startUrl } = require("./tools/token.js");
 
 const root = __dirname;
 const port = Number(process.env.PORT || 8798);
@@ -172,7 +172,8 @@ async function startUmgebung(url) {
   await client.send("Emulation.setDeviceMetricsOverride", { width: 1480, height: 780, deviceScaleFactor: 1, mobile: false });
   await client.send("Page.addScriptToEvaluateOnNewDocument", { source: "window.__ctx=[];addEventListener('contextmenu',e=>window.__ctx.push(e));"
     + "window.__ws=[];(function(W){window.WebSocket=function(u,p){window.__ws.push(String(u));return p===undefined?new W(u):new W(u,p);};window.WebSocket.prototype=W.prototype;})(window.WebSocket);" });
-  await client.send("Page.navigate", { url: "http://127.0.0.1:" + port + "/" + (url || "") + "#" + sitzungToken });
+  // Echter Startweg: private Startdatei (file://) löst einen Einmal-Code per POST ein. Kein Geheimnis in der Adresse.
+  await client.send("Page.navigate", { url: startUrl(port, home, root, url || "") });
   for (let i = 0; i < 60; i++) {
     if (await ev(client, "window.__ready === true")) break;
     await sleep(100);

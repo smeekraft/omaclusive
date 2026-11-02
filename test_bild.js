@@ -3,7 +3,8 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const { spawn, execSync } = require("child_process");
-const { token } = require("./tools/token.js");
+const os = require("os");
+const { startUrl } = require("./tools/token.js");
 
 function chromeBin() {
   if (process.env.CHROME) return process.env.CHROME;
@@ -16,9 +17,28 @@ function chromeBin() {
 const root = __dirname;
 const port = Number(process.env.PORT || 8799);
 const debugPort = Number(process.env.DEBUG_PORT || 9333);
+// Eigener Server mit Wegwerf-HOME, Start über den echten Startweg (Einmal-Code, kein Geheimnis in der Adresse).
+const home = fs.mkdtempSync(path.join(os.tmpdir(), "omaclusive-bild-"));
+let server = null;
+const cfgPfad = path.join(root, "config.json");
+let cfgAlt = null;
+async function serverStarten() {
+  cfgAlt = fs.existsSync(cfgPfad) ? fs.readFileSync(cfgPfad) : null;
+  const c = JSON.parse(fs.readFileSync(path.join(root, "config.example.json"), "utf8"));
+  c.einrichtung = { fertig: true, stand: 2 };
+  fs.writeFileSync(cfgPfad, JSON.stringify(c, null, 2));
+  const bin = path.join(home, "bin");
+  fs.mkdirSync(bin, { recursive: true });
+  fs.writeFileSync(path.join(bin, "pw-play"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+  const env = Object.assign({}, process.env, { PORT: String(port), HOME: home, PATH: bin + ":" + process.env.PATH });
+  delete env.XDG_RUNTIME_DIR;
+  server = spawn("python3", ["server.py"], { cwd: root, env, stdio: "ignore" });
+  await waitJson("http://127.0.0.1:" + port + "/api/bereit");
+}
 function seite() {
-  const geheim = token(port, process.env.HOME, root);
-  return "http://127.0.0.1:" + port + "/index.html?selftest=1#" + geheim;
+  const alt = process.env.XDG_RUNTIME_DIR; delete process.env.XDG_RUNTIME_DIR;
+  try { return startUrl(port, home, root, "index.html?selftest=1"); }
+  finally { if (alt !== undefined) process.env.XDG_RUNTIME_DIR = alt; }
 }
 
 function getJson(url) {
@@ -99,6 +119,7 @@ async function shot(client, name) {
 }
 
 async function main() {
+  await serverStarten();
   fs.rmSync("/tmp/omaclusive-chrome-test", { recursive: true, force: true });
   const chrome = spawn(chromeBin(), [
     "--headless=new",
@@ -115,7 +136,7 @@ async function main() {
   let client = null;
   try {
     const list = await waitJson("http://127.0.0.1:" + debugPort + "/json/list");
-    const tab = list.find(item => item.webSocketDebuggerUrl && String(item.url || "").indexOf("selftest=1") !== -1) || list.find(item => item.webSocketDebuggerUrl);
+    const tab = list.find(item => item.webSocketDebuggerUrl && item.type === "page") || list.find(item => item.webSocketDebuggerUrl);
     if (!tab) throw new Error("keine Testseite in " + JSON.stringify(list).slice(0, 400));
     client = cdp(tab.webSocketDebuggerUrl);
     await client.opened;
@@ -150,6 +171,10 @@ async function main() {
     chrome.kill("SIGTERM");
     await sleep(300);
     try { chrome.kill("SIGKILL"); } catch (err) {}
+    if (server) server.kill("SIGTERM");
+    if (cfgAlt) fs.writeFileSync(cfgPfad, cfgAlt);
+    else for (const n of ["config.json", "config.json.bak"]) { try { fs.unlinkSync(path.join(root, n)); } catch (err) {} }
+    fs.rmSync(home, { recursive: true, force: true });
   }
 }
 

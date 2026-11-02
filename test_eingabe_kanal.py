@@ -24,6 +24,25 @@ import sitzung
 
 DIR = os.path.dirname(os.path.abspath(__file__))
 GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+LETZTER_KOPF = [""]
+
+
+def browser_token(port, home):
+    """Echter Startweg: Einmal-Code mit dem Datei-Geheimnis holen, per POST /api/start einlösen
+    und das Browser-Token aus der Antwortseite lesen (so wie sie es in sessionStorage legt)."""
+    import http.client
+    import re
+    import urllib.parse
+    code = sitzung.startcode_holen(port, home)
+    con = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+    con.request("POST", "/api/start", urllib.parse.urlencode({"code": code, "seite": ""}),
+                {"Host": "127.0.0.1:%d" % port, "Origin": "null", "Content-Type": "application/x-www-form-urlencoded"})
+    antwort = con.getresponse()
+    html = antwort.read().decode()
+    con.close()
+    m = re.search(r'setItem\("omaclusive-sitzung","([A-Za-z0-9_-]+)"\)', html)
+    ok(antwort.status == 200 and m, "Startcode eingelöst: %s" % antwort.status)
+    return m.group(1)
 
 
 def ok(bedingung, text):
@@ -55,7 +74,7 @@ def anfrage(port, pfad, token=None):
     return antwort.status, roh
 
 
-def handshake(port, token=None, keks=None, origin=None, host=None):
+def handshake(port, token=None, keks=None, origin=None, host=None, proto=None, antwort=None):
     """Roher WebSocket-Handshake. Gibt (status, socket oder None) zurück."""
     so = socket.create_connection(("127.0.0.1", port), timeout=5)
     schluessel = base64.b64encode(os.urandom(16)).decode()
@@ -71,6 +90,9 @@ def handshake(port, token=None, keks=None, origin=None, host=None):
         zeilen.append("X-Omaclusive-Token: " + token)
     if keks:
         zeilen.append("Cookie: omaclusive_session=" + keks)
+    if proto:
+        # Wie der Browser: new WebSocket(url, ["omaclusive", "omaclusive-token.<token>"])
+        zeilen.append("Sec-WebSocket-Protocol: omaclusive, omaclusive-token." + proto)
     if origin:
         zeilen.append("Origin: " + origin)
     so.sendall(("\r\n".join(zeilen) + "\r\n\r\n").encode())
@@ -81,6 +103,7 @@ def handshake(port, token=None, keks=None, origin=None, host=None):
             break
         kopf += stueck
     text = kopf.decode("latin-1")
+    LETZTER_KOPF[0] = text
     try:
         status = int(text.split(" ", 2)[1])
     except (IndexError, ValueError):
@@ -192,28 +215,40 @@ def main():
         st, roh = anfrage(port, "/api/bereit?probe=kurz")
         ok(json.loads(roh).get("beweis") == "", "zu kurze Probe bekommt keinen Beweis")
 
+        btoken = browser_token(port, home)
+        ok(btoken != geheim, "Browser-Token ist nicht das Datei-Geheimnis")
         # Kanal aus (Standard): auch mit Geheimnis kein Handshake
-        st, so = handshake(port, keks=geheim, origin=origin)
+        st, so = handshake(port, proto=btoken, origin=origin)
         ok(st == 404 and so is None, "Kanal aus: 404 (%s)" % st)
         st, so = handshake(port)
-        ok(st == 403 and so is None, "ohne Geheimnis: 403 (%s)" % st)
+        ok(st == 401 and so is None, "ohne Geheimnis: 401 (%s)" % st)
 
         config_setzen(cfg, True)
-        for beschreibung, kw in (
-            ("ohne Geheimnis", {}),
-            ("ohne Geheimnis mit Origin", {"origin": origin}),
-            ("falsches Geheimnis", {"token": "x" * 43}),
-            ("falscher Keks", {"keks": "y" * 43, "origin": origin}),
-            ("fremde Herkunft", {"keks": geheim, "origin": "http://127.0.0.1:8765"}),
-            ("fremde Seite", {"keks": geheim, "origin": "http://evil.example"}),
-            ("fremder Host", {"token": geheim, "host": "evil.example:%d" % port}),
+        for beschreibung, kw, erwartet in (
+            ("ohne Geheimnis", {}, 401),
+            ("ohne Geheimnis mit Origin", {"origin": origin}, 401),
+            ("falsches Geheimnis", {"token": "x" * 43}, 401),
+            ("falsches Unterprotokoll", {"proto": "y" * 43, "origin": origin}, 401),
+            # Das alte Cookie zählt nicht mehr, auch nicht mit dem echten Geheimnis.
+            ("Keks mit echtem Geheimnis", {"keks": geheim, "origin": origin}, 401),
+            ("Keks mit Browser-Token", {"keks": btoken, "origin": origin}, 401),
+            ("anderer Port (Origin)", {"proto": btoken, "origin": "http://127.0.0.1:8765"}, 403),
+            ("anderer Port (Origin, Datei-Geheimnis)", {"token": geheim, "origin": "http://127.0.0.1:%d" % (port + 1)}, 403),
+            ("localhost statt 127.0.0.1", {"proto": btoken, "origin": "http://localhost:%d" % port}, 403),
+            ("fremde Seite", {"proto": btoken, "origin": "http://evil.example"}, 403),
+            ("Origin null", {"proto": btoken, "origin": "null"}, 403),
+            ("fremder Host", {"token": geheim, "host": "evil.example:%d" % port}, 403),
+            ("Host mit anderem Port", {"proto": btoken, "origin": origin, "host": "127.0.0.1:%d" % (port + 1)}, 403),
         ):
             st, so = handshake(port, **kw)
-            ok(st == 403 and so is None, "%s: 403 (%s)" % (beschreibung, st))
+            ok(st == erwartet and so is None, "%s: %s (%s)" % (beschreibung, erwartet, st))
 
-        # Oberfläche (Browser: Keks und Origin) und Brücke (Kopfzeile, ohne Origin)
-        st, oberflaeche = handshake(port, keks=geheim, origin=origin)
-        ok(st == 101, "Oberfläche mit Geheimnis: 101 (%s)" % st)
+        # Oberfläche (Browser: Unterprotokoll und Origin) und Brücke (Kopfzeile, ohne Origin)
+        st, oberflaeche = handshake(port, proto=btoken, origin=origin)
+        ok(st == 101, "Oberfläche mit Browser-Token: 101 (%s)" % st)
+        ok("sec-websocket-protocol: omaclusive\r\n" in LETZTER_KOPF[0].lower() and btoken not in LETZTER_KOPF[0],
+           "Server wählt nur 'omaclusive', das Token kommt nicht zurück")
+        ok("set-cookie" not in LETZTER_KOPF[0].lower(), "Handshake setzt kein Cookie")
         offen.append(oberflaeche)
         st, bruecke = handshake(port, token=geheim)
         ok(st == 101, "Brücke mit Geheimnis: 101 (%s)" % st)
@@ -233,7 +268,7 @@ def main():
         bruecke.close()
         offen.remove(bruecke)
         st, so = handshake(port)
-        ok(st == 403 and so is None, "Reconnect ohne Geheimnis: 403")
+        ok(st == 401 and so is None, "Reconnect ohne Geheimnis: 401")
         st, bruecke = handshake(port, token=geheim)
         ok(st == 101, "Reconnect mit Geheimnis: 101")
         offen.append(bruecke)

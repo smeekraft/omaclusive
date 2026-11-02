@@ -244,7 +244,7 @@ def pruefe_nicht_per_http(env, install, beschreibung, prefix):
              "import os, sitzung; print(sitzung.boot_schreiben(int(os.environ['PORT']), ''), end='')"],
             cwd=install, env=env, text=True)
         with open(boot, encoding="utf-8") as handle:
-            ok(geheim in handle.read(), beschreibung + ": Startdatei lokal")
+            ok(geheim not in handle.read(), beschreibung + ": Startdatei trägt nur einen Einmal-Code, nicht das Geheimnis")
         ok(not sitzung.liegt_in(boot, install), beschreibung + ": Startdatei in der Web-Wurzel: " + boot)
         bootlink = os.path.join(install, "boot-leak.txt")
         os.symlink(boot, bootlink)
@@ -437,11 +437,11 @@ def main():
         st, skript = anfrage(port, "GET", "/sitzung.js")
         ok(st == 200 and geheim not in skript, "Skript ohne Geheimnis")
         st, _ = anfrage(port, "GET", "/config.json")
-        ok(st == 403, "config.json ohne Geheimnis: 403")
+        ok(st == 401, "config.json ohne Geheimnis: 401")
         st, cfg_text = anfrage(port, "GET", "/config.json", token=geheim)
         ok(st == 200 and isinstance(cfg_text, dict) and cfg_text.get("language") == "de", "config.json mit Geheimnis")
         st, _ = anfrage(port, "GET", "/foo/../config.json")
-        ok(st == 403, "config.json über .. ohne Geheimnis: 403")
+        ok(st == 401, "config.json über .. ohne Geheimnis: 401")
 
         st, katalog = anfrage(port, "GET", "/api/bausteine", token=geheim)
         ok(st == 200 and any(e.get("name") == "system.poweroff" for e in katalog.get("bausteine", [])), "Bausteine mit Geheimnis")
@@ -459,13 +459,13 @@ def main():
         st, _ = anfrage(port, "GET", "/api/hinweis", token=geheim)
         ok(st == 405, "GET /api/hinweis: 405")
         st, _ = anfrage(port, "POST", "/api/open", {"url": "http://example.com/"}, token=None)
-        ok(st == 403 and "chromium" not in logtext(protokoll), "POST /api/open ohne Geheimnis: 403")
+        ok(st == 401 and "chromium" not in logtext(protokoll), "POST /api/open ohne Geheimnis: 401")
         st, _ = anfrage(port, "POST", "/api/open", {"url": "http://example.com/"}, token=geheim, origin="http://evil.example")
         ok(st == 403 and "chromium" not in logtext(protokoll), "POST /api/open fremde Herkunft: 403")
         st, _ = anfrage(port, "POST", "/api/open", {"url": "http://example.com/"}, token=geheim, host="evil.example:%d" % port)
         ok(st == 403 and "chromium" not in logtext(protokoll), "POST /api/open fremder Host: 403")
         st, _ = anfrage(port, "POST", "/api/open", {"url": "http://example.com/"}, token="falsch")
-        ok(st == 403 and "chromium" not in logtext(protokoll), "POST /api/open falsches Geheimnis: 403")
+        ok(st == 401 and "chromium" not in logtext(protokoll), "POST /api/open falsches Geheimnis: 401")
         st, offen = anfrage(port, "POST", "/api/open", {"url": "http://example.com/a"}, token=geheim)
         for _ in range(30):
             if "chromium" in logtext(protokoll):
@@ -475,7 +475,7 @@ def main():
            "POST /api/open mit Geheimnis öffnet: %s %s" % (st, offen))
 
         st, _ = anfrage(port, "POST", "/api/baustein", {"name": "system.poweroff", "confirm": True})
-        ok(st == 403 and "poweroff" not in logtext(protokoll), "Ausschalten ohne Geheimnis: 403")
+        ok(st == 401 and "poweroff" not in logtext(protokoll), "Ausschalten ohne Geheimnis: 401")
         st, _ = anfrage(port, "POST", "/api/baustein", {"name": "system.reboot", "confirm": True}, token=geheim, origin="http://evil.example")
         ok(st == 403 and "reboot" not in logtext(protokoll), "Neustart fremde Herkunft: 403")
         st, frage = anfrage(port, "POST", "/api/baustein", {"name": "system.poweroff", "confirm": True}, token=geheim)
@@ -496,7 +496,8 @@ def main():
         ok(modus(boot) == 0o600, "Startdatei ist 0600")
         with open(boot, encoding="utf-8") as handle:
             html = handle.read()
-        ok(geheim in html and html.startswith("<!doctype html>"), "Startdatei trägt das Geheimnis nur lokal")
+        ok(geheim not in html and html.startswith("<!doctype html>") and 'name="code"' in html and "/api/start" in html,
+           "Startdatei trägt nur einen Einmal-Code für POST /api/start, nie das Geheimnis")
         url = sitzung.boot_url(port, "setup.html", home)
         ok(url.startswith("file://") and geheim not in url, "Befehlszeile enthält das Geheimnis nicht")
         ok(not sitzung.liegt_in(boot, DIR), "Startdatei liegt in der Web-Wurzel")
